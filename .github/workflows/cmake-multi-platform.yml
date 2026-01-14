@@ -1,0 +1,29 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-solutions-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: fetch dependencies
+      run: |
+        sudo apt-get install libgtest-dev clang-format clang-tidy
+    - name: cmake
+      run: |
+        mkdir build
+        cd build
+        cmake -GNinja -DCMAKE_BUILD_TYPE=Debug ..
+    - name: make
+      run: |
+        cd build
+        ninja
+    - name: test
+      run: |
+        cd build
+        ./test
