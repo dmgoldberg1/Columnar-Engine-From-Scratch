@@ -4,7 +4,8 @@ project(Columnar-Engine-From-Scratch LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -g -O1")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
 include(FetchContent)
 FetchContent_Declare(
@@ -20,6 +21,11 @@ enable_testing()
 add_executable(
   tests
   test.cpp
+  src/csv_wrapper.cpp
+  src/column_types.cpp
+  src/utilities.cpp
+  src/file_writer.cpp
+  src/file_reader.cpp
 )
 target_link_libraries(
   tests
@@ -29,3 +35,7 @@ target_link_libraries(
 include(GoogleTest)
 gtest_discover_tests(tests)
 
+
+add_executable(csv_wrapper src/csv_wrapper.cpp)
+add_executable(file_writer src/file_writer.cpp)
+add_executable(main main.cpp)
