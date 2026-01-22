@@ -35,7 +35,4 @@ target_link_libraries(
 include(GoogleTest)
 gtest_discover_tests(tests)
 
-
-add_executable(csv_wrapper src/csv_wrapper.cpp)
-add_executable(file_writer src/file_writer.cpp)
 add_executable(main main.cpp)
