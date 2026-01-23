@@ -21,11 +21,11 @@ enable_testing()
 add_executable(
   tests
   test.cpp
-  src/csv_wrapper.cpp
-  src/column_types.cpp
-  src/utilities.cpp
-  src/file_writer.cpp
-  src/file_reader.cpp
+  src/csv_wrapper/csv_wrapper.cpp
+  src/column_types/column_types.cpp
+  src/utilities/utilities.cpp
+  src/file_writer/file_writer.cpp
+  src/file_reader/file_reader.cpp
 )
 target_link_libraries(
   tests
