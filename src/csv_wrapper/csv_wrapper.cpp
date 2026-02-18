@@ -12,21 +12,14 @@ public:
         }
         file_size_ = std::filesystem::file_size(input_path);
     }
-    std::vector<std::unique_ptr<Column>> GetNextLineAndSplitIntoTokens() {
-        std::vector<std::unique_ptr<Column>> result;
-        curr_row_size_ = 0;
+    std::vector<std::string> GetNextLineAndSplitIntoTokens() {
+        std::vector<std::string> result;
         std::string line;
         std::getline(input_, line);
         std::stringstream line_stream(line);
         std::string cell;
         while (std::getline(line_stream, cell, ',')) {
-            std::unique_ptr<Column> obj_ptr = std::make_unique<String>(cell);
-            if (isInteger(cell)) {
-                std::unique_ptr<Column> num = std::make_unique<Int64>(std::stoll(cell));
-                obj_ptr = std::move(num);
-            }
-            curr_row_size_ += obj_ptr->GetFirstCellSize();
-            result.push_back(std::move(obj_ptr));
+            result.push_back(std::move(cell));
         }
         return result;
     }
@@ -92,7 +85,7 @@ CSVWrapper& CSVWrapper::operator=(CSVWrapper&& reader) {
     return *this;
 }
 
-std::vector<std::unique_ptr<Column>> CSVWrapper::GetNextLineAndSplitIntoTokens() {
+std::vector<std::string> CSVWrapper::GetNextLineAndSplitIntoTokens() {
     return impl_->GetNextLineAndSplitIntoTokens();
 }
 

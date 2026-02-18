@@ -11,26 +11,15 @@
 #include <iostream>
 #include <random>
 
-bool CompareColumns(const std::vector<std::unique_ptr<Column>>& actual, 
+bool CompareVec(const std::vector<std::string>& actual, 
                     const std::vector<std::string>& expected) {
     if (actual.size() != expected.size()) {
         return false;
     }
     
     for (size_t i = 0; i < actual.size(); ++i) {
-        if (auto int_col = dynamic_cast<Int64*>(actual[i].get())) {
-            try {
-                int64_t expected_val = std::stoll(expected[i]);
-                if (int_col->GetFirstCellValue() != expected_val) {
-                    return false;
-                }
-            } catch (...) {
-                return false;
-            }
-        } else if (auto str_col = dynamic_cast<String*>(actual[i].get())) {
-            if (str_col->GetFirstCellValue() != expected[i]) {
-                return false;
-            }
+        if (actual[i] != expected[i]) {
+            return false;
         }
     }
     return true;
@@ -57,7 +46,7 @@ void GenerateCsv() {
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> num_dist(0, 10000);
     std::uniform_int_distribution<char> char_dist('a', 'z');
-    int64_t rows = 720000;
+    int64_t rows = 7200000;
      for (int i = 0; i < rows; i++) {
         for (int col = 0; col < 3; col++) {
             file << num_dist(gen);
@@ -101,15 +90,15 @@ TEST(CSVWrapperBasicFileTest, ReadBasicCSV) {
     CSVWrapper parser(test_file);
     auto line1 = parser.GetNextLineAndSplitIntoTokens();
     auto expected1 = CreateStringVector({"Name", "Age", "City"});
-    EXPECT_TRUE(CompareColumns(line1, expected1));
+    EXPECT_TRUE(CompareVec(line1, expected1));
 
     auto line2 = parser.GetNextLineAndSplitIntoTokens();
     auto expected2 = CreateStringVector({"John", "25", "NYC"});
-    EXPECT_TRUE(CompareColumns(line2, expected2));
+    EXPECT_TRUE(CompareVec(line2, expected2));
 
     auto line3 = parser.GetNextLineAndSplitIntoTokens();
     auto expected3 = CreateStringVector({"Jane", "30", "LA"});
-    EXPECT_TRUE(CompareColumns(line3, expected3));
+    EXPECT_TRUE(CompareVec(line3, expected3));
     
     auto line4 = parser.GetNextLineAndSplitIntoTokens();
     EXPECT_TRUE(line4.empty());
@@ -122,12 +111,6 @@ TEST(RowGroupWriterTest, JustWorks) {
     {
         std::ofstream out(input_file);
         out << "John,25,NYC\n"
-            << "Jane,30,LA"
-            << "Jane,30,LA"
-            << "Jane,30,LA"
-            << "Jane,30,LA"
-            << "Jane,30,LA"
-            << "Jane,30,LA"
             << "Jane,30,LA";
     }
     const char* output_file = "db_file.egg";
@@ -145,7 +128,7 @@ TEST(RowGroupWriterTest, IncorrectCellTypes) {
     {
         std::ofstream out(input_file);
         out << "John,25,NYC\n"
-            << "40,30,LA";
+            << "Jane,AMOGUS,LA";
     }
     const char* output_file = "db_file.egg";
     CSVWrapper parser(input_file);

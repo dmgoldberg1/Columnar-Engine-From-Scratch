@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../utilities/utilities.h"
-#include "../column_types/column_types.h"
 
 
 #include <istream>
@@ -23,7 +22,7 @@ public:
     CSVWrapper(const CSVWrapper& other) = delete;
     CSVWrapper operator=(const CSVWrapper& reader) = delete;
     CSVWrapper& operator=(CSVWrapper&& reader);
-    std::vector<std::unique_ptr<Column>> GetNextLineAndSplitIntoTokens();
+    std::vector<std::string> GetNextLineAndSplitIntoTokens();
     std::vector<int64_t> GetTypesInfo() const;
     bool IsEnd() const;
     void Close();
