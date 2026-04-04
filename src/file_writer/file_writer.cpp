@@ -1,19 +1,20 @@
 #include "file_writer.h"
+
 #include "../column_types/column_types.h"
 #include "../utilities/utilities.h"
+
 
 #include <vector>
 #include <string>
 
 static inline constexpr int64_t RowGroupSize = 128 * 1024 * 1024;
-RowGroupWriter::RowGroupWriter(CSVWrapper&& reader, std::ostream& output) : impl_(std::make_unique<Impl>(std::move(reader), output)) {
+RowGroupWriter::RowGroupWriter(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : impl_(std::make_unique<Impl>(std::move(reader), output, scheme)) {
 }
 
 class RowGroupWriter::Impl {
 public:
-    Impl(CSVWrapper&& reader, std::ostream& output) : output_(output) {
+    Impl(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : output_(output), scheme_(scheme) {
         csv_reader_ = std::move(reader);
-        csv_reader_.SetColumnNumAndTypes();
         column_num_ = csv_reader_.GetColumnNum();
         types_ = csv_reader_.GetTypesInfo();
         for (int64_t i = 0; i < column_num_; ++i) {
@@ -35,6 +36,7 @@ public:
     void WriteAll() {
         std::vector<int64_t> file_metadata;
         std::vector<int64_t> batch_start_pos;
+
         int64_t batch_count = 0;
         while (!csv_reader_.IsEnd()) {
             ++batch_count;
@@ -46,8 +48,11 @@ public:
         file_metadata.push_back(column_num_);
         file_metadata.insert(file_metadata.end(), types_.begin(), types_.end());
         file_metadata.insert(file_metadata.end(), all_batch_metadata_.begin(), all_batch_metadata_.end());
-        file_metadata.push_back(file_metadata.size() * sizeof(int64_t));
+        std::vector<uint8_t> scheme_bytes = scheme_.Serialize();
         output_.write(reinterpret_cast<const char*>(file_metadata.data()), file_metadata.size() * sizeof(int64_t));
+        output_.write(reinterpret_cast<const char*>(scheme_bytes.data()), scheme_bytes.size());
+        uint64_t metadata_size = scheme_bytes.size() + file_metadata.size() * sizeof(int64_t);
+        output_.write(reinterpret_cast<const char*>(&metadata_size), sizeof(metadata_size));
         csv_reader_.Close();
     }
 
@@ -81,6 +86,7 @@ protected:
     CSVWrapper csv_reader_;
     std::ostream& output_;
     int64_t column_num_ = 0;
+    Scheme& scheme_;
     std::vector<std::unique_ptr<Column>> row_group_;
     std::vector<int64_t> all_batch_metadata_;
     std::vector<int64_t> types_;

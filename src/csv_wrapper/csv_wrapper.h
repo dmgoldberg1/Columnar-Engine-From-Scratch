@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../utilities/utilities.h"
+#include "../scheme/scheme.h"
 
 
 #include <istream>
@@ -30,6 +31,7 @@ public:
     size_t GetColumnNum() const;
     int64_t GetCurrRowSize() const;
     void SetColumnNumAndTypes();
+    void SetScheme(Scheme& scheme);
     ~CSVWrapper();
 
 

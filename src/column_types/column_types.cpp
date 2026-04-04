@@ -1,6 +1,7 @@
 #include "column_types.h"
 
 #include <stdexcept>
+#include <string_view>
 #include <cstring>
 
 void Int64::Write(std::ostream& output) {
@@ -20,6 +21,19 @@ void Int64::SetData(const std::vector<uint8_t>& data) {
     int64_t count = data.size() / sizeof(int64_t);
     value_.resize(count);
     std::memcpy(value_.data(), data.data(), data.size());
+}
+
+std::vector<std::string> Int64::GetColumnAsString() const {
+    std::vector<std::string> result;
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        std::string val = GetCellAsString(i);
+        result.push_back(std::move(val));
+    }
+    return result;
+}
+
+size_t Int64::GetColumnByteSize() const {
+    return value_.size() * sizeof(int64_t);
 }
 
 void String::Write(std::ostream& output) {
@@ -57,7 +71,11 @@ void String::SetData(const std::vector<uint8_t>& data) {
     }
 }
 
-size_t Int64::GetColumnByteSize() const {
-    return value_.size() * sizeof(int64_t);
-    
+std::vector<std::string> String::GetColumnAsString() const {
+    return value_;
 }
+
+
+
+
+

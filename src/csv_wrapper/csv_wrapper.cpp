@@ -30,6 +30,7 @@ public:
 
     void SetColumnNumAndTypes() {
         if (column_num_ == 0) {
+            int64_t start_pos = input_.tellg();
             std::string line;
             std::getline(input_, line);
             std::stringstream line_stream(line);
@@ -42,9 +43,18 @@ public:
                     types_info_.push_back(static_cast<int64_t>(Types::TypeString));
                 }
             }
-            input_.seekg(0, std::ios::beg);
+            input_.seekg(start_pos, std::ios::beg);
         }
-        
+    }
+
+    void SetScheme(Scheme& scheme) {
+        std::string line;
+        std::getline(input_, line);
+        std::stringstream line_stream(line);
+        std::string cell;
+        while (std::getline(line_stream, cell, ',')) {
+            scheme.AddColumnName(cell);
+        }
     }
 
     size_t GetColumnNum() const {
@@ -95,6 +105,10 @@ size_t CSVWrapper::GetFileSize() const {
 
 void CSVWrapper::SetColumnNumAndTypes() {
     impl_->SetColumnNumAndTypes();
+}
+
+void CSVWrapper::SetScheme(Scheme& scheme) {
+    impl_->SetScheme(scheme);
 }
 
 bool CSVWrapper::IsEnd() const {

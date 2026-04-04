@@ -4,6 +4,8 @@
 #include "src/column_types/column_types.h"
 #include "src/file_writer/file_writer.h"
 #include "src/file_reader/file_reader.h"
+#include "src/scheme/scheme.h"
+#include "src/operators/operators.h"
 
 #include <filesystem>
 #include <sstream>
@@ -47,6 +49,7 @@ void GenerateCsv() {
     std::uniform_int_distribution<int> num_dist(0, 10000);
     std::uniform_int_distribution<char> char_dist('a', 'z');
     int64_t rows = 7200000;
+    file << "Name,Age,City\n";
      for (int i = 0; i < rows; i++) {
         for (int col = 0; col < 3; col++) {
             file << num_dist(gen);
@@ -110,13 +113,17 @@ TEST(RowGroupWriterTest, JustWorks) {
     const char* input_file = "test.csv";
     {
         std::ofstream out(input_file);
-        out << "John,25,NYC\n"
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
             << "Jane,30,LA";
     }
     const char* output_file = "db_file.egg";
+    Scheme scheme;
     CSVWrapper parser(input_file);
+    parser.SetScheme(scheme);
+    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
-    RowGroupWriter writer(std::move(parser), output);
+    RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
     output.close();
     std::remove(input_file);
@@ -127,13 +134,18 @@ TEST(RowGroupWriterTest, IncorrectCellTypes) {
     const char* input_file = "test.csv";
     {
         std::ofstream out(input_file);
-        out << "John,25,NYC\n"
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
             << "Jane,AMOGUS,LA";
     }
     const char* output_file = "db_file.egg";
+
+    Scheme scheme;
     CSVWrapper parser(input_file);
+    parser.SetScheme(scheme);
+    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
-    RowGroupWriter writer(std::move(parser), output);
+    RowGroupWriter writer(std::move(parser), output, scheme);
     EXPECT_THROW(writer.WriteAll(), std::runtime_error);
     output.close();
     std::remove(input_file);
@@ -144,14 +156,18 @@ TEST(RowGroupReaderTest, SimpleTest) {
     const char* input_csv_file = "test.csv";
     {
         std::ofstream out(input_csv_file);
-        out << "John,25,NYC\n"
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
             << "Jane,30,LA";
     }
 
     const char* output_file = "db_file.egg";
+    Scheme scheme;
     CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
-    RowGroupWriter writer(std::move(parser), output);
+    RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
     output.close();
 
@@ -169,24 +185,58 @@ TEST(RowGroupReaderTest, SimpleTest) {
 
 TEST(RowGroupReaderTest, BigFile) {
     GenerateCsv();
-
     const char* input_csv_file = "test.csv";
     const char* output_file = "db_file.egg";
+    Scheme scheme;
     CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
-    RowGroupWriter writer(std::move(parser), output);
+    RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
     output.close();
-
     const char* input_db_file = "db_file.egg";
     std::ifstream input(input_db_file, std::ios::binary | std::ios::ate);
     RowGroupReader reader(input);
     const char* output_csv_file = "test_output.csv";
     reader.ReadToCSV(output_csv_file);
-
     EXPECT_TRUE(CompareCSVFiles(input_csv_file, output_csv_file));
     std::remove(output_file);
     std::remove(input_csv_file);
     std::remove(output_csv_file);
+}
+
+TEST(BasicOperatorsTest, ScanOperatorTest) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
+            << "Jane,30,LA";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    parser.SetColumnNumAndTypes();
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::optional<Batch> batch = scan_operator->Next();
+    std::vector<std::string> col0_expected{"John", "Jane"};
+    std::vector<std::string> col1_expected{"25", "30"};
+    std::vector<std::string> col0 = batch.value()[0]->GetColumnAsString();
+    std::vector<std::string> col1 = batch.value()[1]->GetColumnAsString();
+    EXPECT_TRUE(CompareVec(col0_expected, col0));
+    EXPECT_TRUE(CompareVec(col0_expected, col0));
+    std::optional<Batch> empty_batch = scan_operator->Next();
+    EXPECT_FALSE(empty_batch.has_value());
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
 }
 

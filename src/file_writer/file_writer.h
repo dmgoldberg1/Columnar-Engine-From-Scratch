@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../csv_wrapper/csv_wrapper.h"
+#include "../scheme/scheme.h"
 
 #include <memory>
 #include <ostream>
@@ -8,7 +9,7 @@
 
 class RowGroupWriter {
 public:
-    RowGroupWriter(CSVWrapper&& reader, std::ostream& output);
+    RowGroupWriter(CSVWrapper&& reader, std::ostream& output, Scheme& scheme);
     void WriteAll();
     ~RowGroupWriter();
 protected:

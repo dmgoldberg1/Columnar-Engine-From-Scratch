@@ -5,7 +5,7 @@ project(Columnar-Engine-From-Scratch LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined -O3")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 
 include(FetchContent)
 FetchContent_Declare(
@@ -26,6 +26,8 @@ add_executable(
   src/utilities/utilities.cpp
   src/file_writer/file_writer.cpp
   src/file_reader/file_reader.cpp
+  src/scheme/scheme.cpp
+  src/operators/operators.cpp
 )
 target_link_libraries(
   tests

@@ -14,6 +14,7 @@ public:
     virtual int64_t GetLastCellSize() const = 0;
     virtual size_t GetColumnByteSize() const = 0;
     virtual std::string GetCellAsString(int64_t i) const = 0;
+    virtual std::vector<std::string> GetColumnAsString() const = 0;
     virtual void Clear() = 0;
     virtual void SetData(const std::vector<uint8_t>& data) = 0;
     virtual ~Column() = default;
@@ -30,6 +31,7 @@ public:
     }
     size_t GetColumnByteSize() const override;
     std::string GetCellAsString(int64_t i) const override { return std::to_string(value_[i]); }
+    std::vector<std::string> GetColumnAsString() const override;
     void Clear() override { value_.clear(); }
     void SetData(const std::vector<uint8_t>& data) override;
 protected:
@@ -48,6 +50,7 @@ public:
     }
     size_t GetColumnByteSize() const override { return size_; }
     std::string GetCellAsString(int64_t i) const override { return value_[i]; }
+    std::vector<std::string> GetColumnAsString() const override;
     void Clear() override {
         value_.clear();
         size_ = 0;
