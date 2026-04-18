@@ -27,6 +27,10 @@ std::vector<std::string> Scheme::GetNamesOrdered() const {
     return names_ordered_;
 }
 
-int Scheme::GetColumnIndex(const std::string& name) {
-    return scheme_[name];
+int Scheme::GetColumnIndex(const std::string& name) const {
+    return scheme_.at(name);
+}
+
+int64_t Scheme::GetTypeInfo(const std::string& name) const {
+    return types_info_[GetColumnIndex(name)];
 }

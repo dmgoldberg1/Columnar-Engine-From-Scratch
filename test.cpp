@@ -121,7 +121,6 @@ TEST(RowGroupWriterTest, JustWorks) {
     Scheme scheme;
     CSVWrapper parser(input_file);
     parser.SetScheme(scheme);
-    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -143,7 +142,6 @@ TEST(RowGroupWriterTest, IncorrectCellTypes) {
     Scheme scheme;
     CSVWrapper parser(input_file);
     parser.SetScheme(scheme);
-    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     EXPECT_THROW(writer.WriteAll(), std::runtime_error);
@@ -165,7 +163,6 @@ TEST(RowGroupReaderTest, SimpleTest) {
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
     parser.SetScheme(scheme);
-    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -190,7 +187,6 @@ TEST(RowGroupReaderTest, BigFile) {
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
     parser.SetScheme(scheme);
-    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -218,7 +214,6 @@ TEST(BasicOperatorsTest, ScanOperatorTest) {
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
     parser.SetScheme(scheme);
-    parser.SetColumnNumAndTypes();
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -236,6 +231,248 @@ TEST(BasicOperatorsTest, ScanOperatorTest) {
     EXPECT_TRUE(CompareVec(col0_expected, col0));
     std::optional<Batch> empty_batch = scan_operator->Next();
     EXPECT_FALSE(empty_batch.has_value());
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(BasicOperatorsTest, CompareOperatorTest) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
+            << "Jane,30,LA";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::string filter_column = "Name";
+    std::string filter_name = "Jane";
+    std::unique_ptr<FilterCondition> condition = std::make_unique<CompareFilter<std::string>>(filter_column, CompareFilter<std::string>::Op::EQ, filter_name, scheme);
+    std::unique_ptr<IOperator> filter_operator = std::make_unique<FilterOperator>(std::move(scan_operator), std::move(condition));
+    std::optional<Batch> batch = filter_operator->Next();
+    std::vector<std::string> expected{"Jane", "30"};
+    std::vector<std::string> result;
+    auto col0_data = batch.value()[0]->GetColumnAsString();
+    auto col1_data = batch.value()[1]->GetColumnAsString();
+    result.insert(result.end(), col0_data.begin(), col0_data.end());
+    result.insert(result.end(), col1_data.begin(), col1_data.end());
+    EXPECT_TRUE(CompareVec(result, expected));
+    std::optional<Batch> next_batch = filter_operator->Next();
+    EXPECT_FALSE(next_batch.has_value());
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(BasicOperatorsTest, AndFilterOperatorTest) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
+            << "Jane,30,LA\n"
+            << "Jane,60,NYC";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::string filter_column1 = "Name";
+    std::string name = "Jane";
+    std::string filter_column2 = "Age";
+    int64_t age = 50;
+    std::unique_ptr<FilterCondition> condition1 = std::make_unique<CompareFilter<std::string>>(filter_column1, CompareFilter<std::string>::Op::EQ, name, scheme);
+    std::unique_ptr<FilterCondition> condition2 = std::make_unique<CompareFilter<int64_t>>(filter_column2, CompareFilter<int64_t>::Op::LT, age, scheme);
+    std::unique_ptr<FilterCondition> final_condition = std::make_unique<AndFilter>(std::move(condition1), std::move(condition2));
+    std::unique_ptr<IOperator> filter_operator = std::make_unique<FilterOperator>(std::move(scan_operator), std::move(final_condition));
+    std::optional<Batch> batch = filter_operator->Next();
+    std::vector<std::string> expected{"Jane", "30"};
+    std::vector<std::string> result;
+    auto col0_data = batch.value()[0]->GetColumnAsString();
+    auto col1_data = batch.value()[1]->GetColumnAsString();
+    result.insert(result.end(), col0_data.begin(), col0_data.end());
+    result.insert(result.end(), col1_data.begin(), col1_data.end());
+    EXPECT_TRUE(CompareVec(result, expected));
+    std::optional<Batch> next_batch = filter_operator->Next();
+    EXPECT_FALSE(next_batch.has_value());
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(GlobalAggregationOperatorTest, Sum) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
+            << "Jane,30,LA\n"
+            << "Jane,60,NYC";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age", "City"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> aggr_cols = {"Age"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op = {GlobalAggregationOperator::Op::SUM};
+    std::unique_ptr<IOperator> aggr_operator = std::make_unique<GlobalAggregationOperator>(aggr_cols, std::move(scan_operator), aggr_op, scheme);
+    std::optional<Batch> batch = aggr_operator->Next();
+    std::vector<std::string> expected = {"115"};
+    std::vector<std::string> result = batch.value()[0]->GetColumnAsString();
+    EXPECT_EQ(expected, result);
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(GlobalAggregationOperatorTest, Max) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
+            << "Jane,30,LA\n"
+            << "Jane,60,NYC";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age", "City"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> aggr_cols = {"Age"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op = {GlobalAggregationOperator::Op::MAX};
+    std::unique_ptr<IOperator> aggr_operator = std::make_unique<GlobalAggregationOperator>(aggr_cols, std::move(scan_operator), aggr_op, scheme);
+    std::optional<Batch> batch = aggr_operator->Next();
+    std::vector<std::string> expected = {"60"};
+    std::vector<std::string> result = batch.value()[0]->GetColumnAsString();
+    EXPECT_EQ(expected, result);
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(GlobalAggregationOperatorTest, CountDistinct) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,25,NYC\n"
+            << "Jane,30,LA\n"
+            << "Jane,60,NYC";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age", "City"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> aggr_cols = {"Age"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op = {GlobalAggregationOperator::Op::CountDistinct};
+    std::unique_ptr<IOperator> aggr_operator = std::make_unique<GlobalAggregationOperator>(aggr_cols, std::move(scan_operator), aggr_op, scheme);
+    std::optional<Batch> batch = aggr_operator->Next();
+    std::vector<std::string> expected = {"3"};
+    std::vector<std::string> result = batch.value()[0]->GetColumnAsString();
+    EXPECT_EQ(expected, result);
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(GlobalAggregationOperatorTest, Avg) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "John,20,NYC\n"
+            << "Jane,21,LA";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age", "City"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> aggr_cols = {"Age"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op = {GlobalAggregationOperator::Op::AVG};
+    std::unique_ptr<IOperator> aggr_operator = std::make_unique<GlobalAggregationOperator>(aggr_cols, std::move(scan_operator), aggr_op, scheme);
+    std::optional<Batch> batch = aggr_operator->Next();
+    std::vector<std::string> expected = {"20.500000"};
+    std::vector<std::string> result = batch.value()[0]->GetColumnAsString();
+    EXPECT_EQ(expected, result);
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(GlobalAggregationOperatorTest, ManyAggregations) {
+    const char* input_csv_file = "test.csv";
+    {
+        std::ofstream out(input_csv_file);
+        out << "Name,Age,City\n"
+            << "Jane,20,NYC\n"
+            << "Jane,21,LA";
+    }
+    const char* output_file = "db_file.egg";
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme);
+    std::ofstream output(output_file, std::ios::binary);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    const char* input_db_file = "db_file.egg";
+    std::vector<std::string> columns{"Name", "Age", "City"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> aggr_cols = {"Name", "Age", "City"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op = {GlobalAggregationOperator::Op::CountDistinct, GlobalAggregationOperator::Op::SUM, GlobalAggregationOperator::Op::MAX};
+    std::unique_ptr<IOperator> aggr_operator = std::make_unique<GlobalAggregationOperator>(aggr_cols, std::move(scan_operator), aggr_op, scheme);
+    std::optional<Batch> batch = aggr_operator->Next();
+    std::vector<std::string> expected = {"1", "41", "NYC"};
+    std::vector<std::string> result;
+    result.push_back(batch.value()[0]->GetColumnAsString().front());
+    result.push_back(batch.value()[1]->GetColumnAsString().front());
+    result.push_back(batch.value()[2]->GetColumnAsString().front());
+    EXPECT_EQ(expected, result);
     std::remove(input_csv_file);
     std::remove(input_db_file);
 }

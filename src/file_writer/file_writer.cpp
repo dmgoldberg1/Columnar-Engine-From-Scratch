@@ -16,7 +16,7 @@ public:
     Impl(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : output_(output), scheme_(scheme) {
         csv_reader_ = std::move(reader);
         column_num_ = csv_reader_.GetColumnNum();
-        types_ = csv_reader_.GetTypesInfo();
+        types_ = scheme.GetTypesInfo();
         for (int64_t i = 0; i < column_num_; ++i) {
             switch (types_[i]) {
                 case 1:
