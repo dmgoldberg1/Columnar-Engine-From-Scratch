@@ -93,12 +93,14 @@ class IAccumulator {
 public:
     virtual ~IAccumulator() = default;
     virtual void Update(const Column* column) = 0;
+    virtual void Update(const Column* column, const std::vector<uint64_t>& mask) = 0;
     virtual CellTypes GetResult() const = 0;
 };
 
 class SumIntAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override { return sum_; }
 protected:
     int64_t sum_ = 0;
@@ -107,6 +109,7 @@ protected:
 class SumFloatAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const { return sum_; }
 protected:
     double sum_ = 0;
@@ -116,6 +119,7 @@ class AvgAccumulator : public IAccumulator {
 public:
     AvgAccumulator(std::unique_ptr<IAccumulator> sum_accumulator) : sum_accumulator_(std::move(sum_accumulator)) {}
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override;
 protected:
     std::unique_ptr<IAccumulator> sum_accumulator_;
@@ -125,6 +129,7 @@ protected:
 class CountAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return count_;
     }
@@ -135,6 +140,7 @@ protected:
 class MinAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return min_;
     }
@@ -147,6 +153,7 @@ protected:
 class MaxAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return max_;
     }
@@ -161,6 +168,7 @@ protected:
 class CountDistinctIntAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return static_cast<int64_t>(set_.size());
     }
@@ -171,6 +179,7 @@ protected:
 class CountDistinctStringAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
+    void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return static_cast<int64_t>(set_.size());
     }
@@ -196,6 +205,27 @@ protected:
     std::unique_ptr<IOperator> child_;
     std::vector<Op> op_;
     Scheme scheme_;
+    std::optional<Batch> result_batch_;
+};
+
+class GroupByAggregationOperator : public IOperator {
+public:
+    using Op = GlobalAggregationOperator::Op;
+    GroupByAggregationOperator(std::unique_ptr<IOperator> child, const std::vector<std::string>& group_by_fields, const std::vector<std::string>& aggr_col_names, const std::vector<Op>& op, const Scheme& scheme) : child_(std::move(child)), group_by_fields_(group_by_fields), aggr_col_names_(aggr_col_names), op_(op), scheme_(scheme) {
+        InitResultBatch();
+    }
+    std::optional<Batch> Next() override;
+    std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+protected:
+    std::vector<std::unique_ptr<IAccumulator>> CreateGroupAccumulators() const;
+    void InitResultBatch();
+protected:
+    std::vector<Op> op_;
+    std::vector<std::string> group_by_fields_;
+    std::vector<std::string> aggr_col_names_;
+    std::unique_ptr<IOperator> child_;
+    Scheme scheme_;
+    int64_t seed_ = 0x9e3779b9;
     std::optional<Batch> result_batch_;
 };
 

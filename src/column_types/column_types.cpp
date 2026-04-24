@@ -1,10 +1,13 @@
 #include "column_types.h"
 
+#include "../utilities/utilities.h"
+
 #include <algorithm>
 #include <stdexcept>
 #include <string_view>
 #include <cstring>
 #include <iostream>
+#include <limits>
 
 void Int64::Write(std::ostream& output) {
     output.write(reinterpret_cast<const char*>(value_.data()), sizeof(int64_t) * value_.size());
@@ -93,9 +96,52 @@ void Int64::FillHashSet(std::unordered_set<int64_t>& set) const {
     }
 }
 
+void Int64::FillHashSet(std::unordered_set<int64_t>& set, const std::vector<uint64_t>& mask) const {
+    for (auto id : mask) {
+        set.insert(value_[id]);
+    }
+}
+
 void Int64::AddCell(const CellTypes& cell) {
     int64_t val = std::get<int64_t>(cell);
     value_.push_back(val);
+}
+
+
+
+void Int64::MergeHashes(std::vector<uint64_t>& hashes, std::vector<std::vector<std::string>>& group_name) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        hashes[i] = HashCombine(hashes[i], HashInt64(value_[i]));
+        group_name[i].push_back(std::to_string(value_[i]));
+    }
+}
+
+int64_t Int64::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return mask.size();
+}
+
+int64_t Int64::GetSum(const std::vector<uint64_t>& mask) const {
+    int64_t ans = 0;
+    for (uint64_t id : mask) {
+        ans += value_[id];
+    }
+    return ans;
+}
+
+CellTypes Int64::GetMin(const std::vector<uint64_t>& mask) const {
+    int64_t ans = std::numeric_limits<int64_t>::max();
+    for (auto id : mask) {
+        ans = std::min(ans, value_[id]);
+    }
+    return ans;
+}
+
+CellTypes Int64::GetMax(const std::vector<uint64_t>& mask) const {
+    int64_t ans = std::numeric_limits<int64_t>::min();
+    for (auto id : mask) {
+        ans = std::max(ans, value_[id]);
+    }
+    return ans;
 }
 
 void String::Write(std::ostream& output) {
@@ -184,9 +230,54 @@ void String::FillHashSet(std::unordered_set<std::string>& set) const {
     }
 }
 
+void String::FillHashSet(std::unordered_set<std::string>& set, const std::vector<uint64_t>& mask) const {
+    for (auto id : mask) {
+        set.insert(value_[id]);
+    }
+}
+
 void String::AddCell(const CellTypes& cell) {
     std::string val = std::get<std::string>(cell);
     value_.emplace_back(val);
+}
+
+void String::MergeHashes(std::vector<uint64_t>& hashes, std::vector<std::vector<std::string>>& group_name) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        hashes[i] = HashCombine(hashes[i], HashString(value_[i]));
+        group_name[i].push_back(value_[i]);
+    }
+}
+
+int64_t String::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return mask.size();
+}
+
+CellTypes String::GetMin(const std::vector<uint64_t>& mask) const {
+    if (mask.empty()) {
+        return std::string("");
+    }
+    std::string_view min_val = value_[mask[0]];
+    for (size_t i = 1; i < mask.size(); ++i) {
+        auto id = mask[i];
+        if (value_[id] < min_val) {
+            min_val = value_[id];
+        }
+    }
+    return std::string(min_val);
+}
+
+CellTypes String::GetMax(const std::vector<uint64_t>& mask) const {
+    if (mask.empty()) {
+        return std::string("");
+    }
+    std::string_view max_val = value_[mask[0]];
+    for (size_t i = 1; i < mask.size(); ++i) {
+        auto id = mask[i];
+        if (value_[id] > max_val) {
+            max_val = value_[id];
+        }
+    }
+    return std::string(max_val);
 }
 
 Double::Double(double value) {
@@ -226,11 +317,23 @@ int64_t Double::GetRowCount() const {
     return 0;
 }
 
+int64_t Double::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return 0;
+}
+
 CellTypes Double::GetMin() const {
     return 0.0;
 }
 
+CellTypes Double::GetMin(const std::vector<uint64_t>& mask) const {
+    return 0.0;
+}
+
 CellTypes Double::GetMax() const {
+    return 0.0;
+}
+
+CellTypes Double::GetMax(const std::vector<uint64_t>& mask) const {
     return 0.0;
 }
 
@@ -253,6 +356,13 @@ void Double::SetData(const std::vector<uint8_t>& data) {
 void Double::AddCell(const CellTypes& cell) {
     double val = std::get<double>(cell);
     value_.push_back(val);
+}
+
+void Double::MergeHashes(std::vector<uint64_t>& hashes, std::vector<std::vector<std::string>>& group_name) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        hashes[i] = HashCombine(hashes[i], HashDouble(value_[i]));
+        group_name[i].push_back(std::to_string(value_[i]));
+    }
 }
 
 
