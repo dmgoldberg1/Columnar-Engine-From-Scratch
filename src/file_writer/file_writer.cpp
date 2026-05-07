@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <string>
+#include <iostream>
 
 static inline constexpr int64_t RowGroupSize = 128 * 1024 * 1024;
 RowGroupWriter::RowGroupWriter(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : impl_(std::make_unique<Impl>(std::move(reader), output, scheme)) {
@@ -60,13 +61,30 @@ protected:
     void WriteGroup() {
         int64_t group_capacity = 0;
         int64_t row_count = 0;
+        std::vector<std::vector<std::string>> str_batch(column_num_);
         while (group_capacity <= RowGroupSize && !csv_reader_.IsEnd()) {
             std::vector<std::string> row = csv_reader_.GetNextLineAndSplitIntoTokens();
+            if (row.size() == 0) {
+                break;
+            }
             for (int64_t i = 0; i < column_num_; ++i) {
-                row_group_[i]->AddCell(row[i]);
-                group_capacity += row_group_[i]->GetLastCellSize();
+                str_batch[i].push_back(row[i]);
+                switch (types_[i]) {
+                    case static_cast<int64_t>(Types::TypeDouble):
+                        group_capacity += sizeof(double);
+                        break;
+                    case static_cast<int64_t>(Types::TypeInt64):
+                        group_capacity += sizeof(int64_t);
+                        break;
+                    case static_cast<int64_t>(Types::TypeString):
+                        group_capacity += sizeof(char) * row[i].size() + sizeof(int64_t);
+                        break;
+                }
             }
             ++row_count;
+        }
+        for (int64_t i = 0; i < column_num_; ++i) {
+            row_group_[i]->AddColumn(str_batch[i]);
         }
         all_batch_metadata_.push_back(group_capacity);
         for (int64_t i = 0; i < column_num_; ++i) {
@@ -79,7 +97,6 @@ protected:
         for (auto& elem : row_group_) {
             elem->Clear();
         }
-        
     }
 
 protected:

@@ -14,6 +14,7 @@ public:
     virtual void Write(std::ostream& output) = 0;
     virtual void AddCell(const std::string& cell) = 0;
     virtual void AddCell(const CellTypes& cell) = 0;
+    virtual void AddColumn(const std::vector<std::string>& col) = 0;
 
     virtual int64_t GetLastCellSize() const = 0;
     virtual size_t GetColumnByteSize() const = 0;
@@ -26,6 +27,7 @@ public:
     virtual CellTypes GetMin(const std::vector<uint64_t>& mask) const = 0;
     virtual CellTypes GetMax() const = 0;
     virtual CellTypes GetMax(const std::vector<uint64_t>& mask) const = 0;
+    virtual CellTypes Get(int64_t r) const = 0;
 
     enum class Op { EQ, NE, LT, LE, GT, GE };
     virtual bool Compare(int row, Op op, CellTypes val) const = 0;
@@ -44,6 +46,7 @@ public:
     void Write(std::ostream& output) override;
     void AddCell(const std::string& cell) override;
     void AddCell(const CellTypes& cell) override;
+    virtual void AddColumn(const std::vector<std::string>& col) override;
     int64_t GetLastCellSize() const override {
         return sizeof(int64_t);
     }
@@ -60,6 +63,7 @@ public:
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMax() const override;
     CellTypes GetMax(const std::vector<uint64_t>& mask) const override;
+    CellTypes Get(int64_t r) const override { return value_[r]; }
 
     void MergeHashes(std::vector<uint64_t>& hashes, std::vector<std::vector<std::string>>& group_name) const override;
     void FillHashSet(std::unordered_set<int64_t>& set) const;
@@ -80,6 +84,7 @@ public:
     void Write(std::ostream& output) override;
     void AddCell(const std::string& cell) override;
     void AddCell(const CellTypes& cell) override;
+    virtual void AddColumn(const std::vector<std::string>& col) override;
     int64_t GetLastCellSize() const override {
         return value_.back().size() + sizeof(int64_t);
     }
@@ -95,6 +100,7 @@ public:
     CellTypes GetMax(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMin() const override;
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
+    CellTypes Get(int64_t r) const override { return value_[r]; }
 
     void MergeHashes(std::vector<uint64_t>& hashes, std::vector<std::vector<std::string>>& group_name) const override;
     void FillHashSet(std::unordered_set<std::string>& set) const;
@@ -120,6 +126,7 @@ public:
     void Write(std::ostream& output) override;
     void AddCell(const std::string& cell) override;
     void AddCell(const CellTypes& cell) override;
+    virtual void AddColumn(const std::vector<std::string>& col) override;
 
     int64_t GetLastCellSize() const override;
     size_t GetColumnByteSize() const override;
@@ -131,6 +138,7 @@ public:
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMax() const override;
     CellTypes GetMax(const std::vector<uint64_t>& mask) const override;
+    CellTypes Get(int64_t r) const override { return value_[r]; }
 
     bool Compare(int row, Op op, CellTypes val) const override;
 

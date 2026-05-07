@@ -229,3 +229,28 @@ protected:
     std::optional<Batch> result_batch_;
 };
 
+class OrderByLimitKOperator : public IOperator {
+public:
+    OrderByLimitKOperator(std::unique_ptr<IOperator> child, int k, bool is_desc, const std::vector<int>& order_by_ids, const Scheme& scheme);
+    std::optional<Batch> Next() override;
+    std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+protected:
+    std::unique_ptr<IOperator> child_;
+    int k_;
+    std::vector<int> order_by_ids_;
+    bool is_desc_;
+    std::optional<Batch> result_batch_;
+};
+
+class OrderByOperator : public IOperator {
+public:
+    OrderByOperator(std::unique_ptr<IOperator> child, const std::vector<int>& order_by_ids, bool is_desc, const Scheme& scheme);
+    std::optional<Batch> Next() override;
+    std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+protected:
+    std::unique_ptr<IOperator> child_;
+    std::vector<int> order_by_ids_;
+    bool is_desc_;
+    std::optional<Batch> result_batch_;
+};
+

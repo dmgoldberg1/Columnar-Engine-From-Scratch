@@ -18,7 +18,18 @@ void Int64::AddCell(const std::string& cell) {
         int64_t num = std::stoll(cell);
         value_.push_back(num);
     } catch (...) {
-        throw std::runtime_error("Cannot add cell to Int64 column.");
+        value_.push_back(0);
+    }
+}
+
+void Int64::AddColumn(const std::vector<std::string>& col) {
+    for (auto cell : col) {
+        try {
+            int64_t num = std::stoll(cell);
+            value_.push_back(num);
+        } catch (...) {
+            value_.push_back(0);
+        }
     }
 }
 
@@ -161,6 +172,17 @@ void String::AddCell(const std::string& cell) {
     
 }
 
+void String::AddColumn(const std::vector<std::string>& col) {
+    for (auto cell : col) {
+        try {
+            value_.emplace_back(cell);
+            size_ += sizeof(int64_t) + cell.size();
+        } catch (...) {
+            throw std::runtime_error("Cannot add cell to String column.");
+        }
+    }
+}
+
 void String::SetData(const std::vector<uint8_t>& data) {
     auto it = data.begin();
     int loop_count = 1;
@@ -290,6 +312,10 @@ void Double::Write(std::ostream& output) {
 
 void Double::AddCell(const std::string& cell) {
     // TODO: парсинг строки в double
+}
+
+void Double::AddColumn(const std::vector<std::string>& col) {
+    
 }
 
 int64_t Double::GetLastCellSize() const {

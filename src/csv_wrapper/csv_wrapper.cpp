@@ -12,15 +12,42 @@ public:
         }
     }
     std::vector<std::string> GetNextLineAndSplitIntoTokens() {
-        std::vector<std::string> result;
-        std::string line;
-        std::getline(input_, line);
-        std::stringstream line_stream(line);
-        std::string cell;
-        while (std::getline(line_stream, cell, ',')) {
-            result.push_back(std::move(cell));
+        std::vector<std::string> record;
+        std::string current_token;
+        bool in_quotes = false;
+        char c;
+        while (input_.get(c)) {
+            if (c == '"') {
+                if (in_quotes && input_.peek() == '"') {
+                    input_.get();
+                    current_token += '"';
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            } 
+            else if (c == ',' && !in_quotes) {
+                record.push_back(std::move(current_token));
+                current_token.clear();
+            } 
+            else if (c == '\n' && !in_quotes) {
+                record.push_back(std::move(current_token));
+                return record;
+            } 
+            else if (c == '\r' && !in_quotes) {
+                if (input_.peek() == '\n') {
+                    input_.get();
+                }
+                record.push_back(std::move(current_token));
+                return record;
+            } 
+            else {
+                current_token += c;
+            }
         }
-        return result;
+        if (!current_token.empty() || !record.empty()) {
+            record.push_back(std::move(current_token));
+        }
+        return record;
     }
 
     void SetScheme(Scheme& scheme) {
