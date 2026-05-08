@@ -11,27 +11,13 @@ class RowGroupReader::Impl {
 public:
     Impl(std::istream& input) : input_(input), metadata_(input) {
         metadata_.Read();
-        for (int64_t curr_type : metadata_.GetTypesInfo()) {
-            switch (curr_type) {
-                case 1:
-                    row_group_.push_back(std::make_unique<Int64>());
-                    break;
-                case 2:
-                    row_group_.push_back(std::make_unique<String>());
-                    break;
-                default:
-                    break;
-            }
-        }
     }
 
     std::optional<Batch> ReadNextBatch(const std::vector<int>& ids) {
         if (curr_batch >= metadata_.GetBatchStartPos().size()) {
             return std::nullopt;
         }
-        for (auto& elem : row_group_) {
-            elem->Clear();
-        }
+        InitRowGroup();
         input_.seekg(metadata_.GetBatchStartPos()[curr_batch], std::ios::beg);
         if (!input_) {
                 throw std::runtime_error("Cannot read batch.");
@@ -54,6 +40,7 @@ public:
     // TODO:: Use ReadNextBatch here
     void ReadToCSV(const char* filename) {
         std::ofstream output(filename, std::ios::out | std::ios::trunc);
+        InitRowGroup();
         std::string csv_string;
         int64_t curr_batch = 0;
         for (auto& name : metadata_.GetScheme().GetNamesOrdered()) {
@@ -109,6 +96,22 @@ public:
         return metadata_.GetScheme();
     }
 protected:
+    void InitRowGroup() {
+        row_group_.clear();
+        for (int64_t curr_type : metadata_.GetTypesInfo()) {
+            switch (curr_type) {
+                case 1:
+                    row_group_.push_back(std::make_unique<Int64>());
+                    break;
+                case 2:
+                    row_group_.push_back(std::make_unique<String>());
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
     std::vector<uint8_t> GetColumnData(int i, const std::vector<int64_t>& column_sizes) {
         int64_t offset = 0;
         for (int j = 0; j < i; ++j) {
@@ -180,6 +183,7 @@ public:
             int64_t type_info;
             std::memcpy(&type_info, ptr, sizeof(int64_t));
             ptr += sizeof(int64_t);
+            scheme_.AddColumnType(type_info);
             types_info_.push_back(type_info);
         }
         size_t expected_metadata_count = batch_count_ * (column_num_ + 2);

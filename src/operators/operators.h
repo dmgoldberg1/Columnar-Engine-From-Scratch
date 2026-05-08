@@ -13,6 +13,7 @@ class IOperator {
 public:
     virtual std::optional<Batch> Next() = 0;
     virtual std::vector<int> GetCurrColIds() const = 0;
+    virtual std::vector<int64_t> GetCurrColTypes() const = 0;
     virtual ~IOperator() = default;
 };
 
@@ -22,6 +23,9 @@ public:
     std::vector<int> GetCurrColIds() const override {
         return curr_ids_;
     }
+    std::vector<int64_t> GetCurrColTypes() const override {
+        return curr_types_;
+    }
           
     std::optional<Batch> Next() override;
 protected:
@@ -29,6 +33,7 @@ protected:
     std::ifstream file_;
     RowGroupReader reader_;
     std::vector<int> curr_ids_;
+    std::vector<int64_t> curr_types_;
 };
 
 class FilterCondition {
@@ -50,6 +55,34 @@ protected:
     Op op_;
     T value_;
     Scheme scheme_;
+};
+
+class LikeFilter : public FilterCondition {
+public:
+    LikeFilter(const std::string& column, std::string pattern, Scheme scheme)
+        : column_(column), pattern_(std::move(pattern)), scheme_(scheme) {}
+
+    bool Evaluate(const Batch& batch, size_t row_index) const override {
+        const std::string value = batch[scheme_.GetColumnIndex(column_)]->GetCellAsString(row_index);
+        return value.find(pattern_) != std::string::npos;
+    }
+
+protected:
+    std::string column_;
+    std::string pattern_;
+    Scheme scheme_;
+};
+
+class NotFilter : public FilterCondition {
+public:
+    explicit NotFilter(std::unique_ptr<FilterCondition> child) : child_(std::move(child)) {}
+
+    bool Evaluate(const Batch& batch, size_t row_index) const override {
+        return !child_->Evaluate(batch, row_index);
+    }
+
+protected:
+    std::unique_ptr<FilterCondition> child_;
 };
 
 class AndFilter : public FilterCondition {
@@ -84,6 +117,7 @@ public:
     FilterOperator(std::unique_ptr<IOperator> child, std::unique_ptr<FilterCondition> cond) : child_(std::move(child)), condition_(std::move(cond)) {}
     std::optional<Batch> Next() override;
     std::vector<int> GetCurrColIds() const override;
+    std::vector<int64_t> GetCurrColTypes() const override { return child_->GetCurrColTypes(); }
 protected:
     std::unique_ptr<IOperator> child_;
     std::unique_ptr<FilterCondition> condition_;
@@ -101,9 +135,10 @@ class SumIntAccumulator : public IAccumulator {
 public:
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
-    CellTypes GetResult() const override { return sum_; }
+    CellTypes GetResult() const override { return static_cast<int64_t>(sum_); }
+    __int128_t GetWideResult() const { return sum_; }
 protected:
-    int64_t sum_ = 0;
+    __int128_t sum_ = 0;
 };
 
 class SumFloatAccumulator : public IAccumulator {
@@ -195,7 +230,14 @@ public:
         Init();
     }
     std::optional<Batch> Next() override;
-    std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+    std::vector<int> GetCurrColIds() const override {
+        std::vector<int> result;
+        for (int i = 0; i < columns_.size(); ++i) {
+            result.push_back(i);
+        }
+        return result;
+    }
+    std::vector<int64_t> GetCurrColTypes() const override { return curr_types_; }
 
 protected:
     void Init();
@@ -206,6 +248,7 @@ protected:
     std::vector<Op> op_;
     Scheme scheme_;
     std::optional<Batch> result_batch_;
+    std::vector<int64_t> curr_types_;
 };
 
 class GroupByAggregationOperator : public IOperator {
@@ -215,7 +258,17 @@ public:
         InitResultBatch();
     }
     std::optional<Batch> Next() override;
-    std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+    std::vector<int> GetCurrColIds() const override {
+        std::vector<int> result;
+        if (!result_batch_.has_value()) {
+            return result;
+        }
+        for (int i = 0; i < result_batch_.value().size(); ++i) {
+            result.push_back(i);
+        }
+        return result;
+    }
+    std::vector<int64_t> GetCurrColTypes() const override { return curr_types_; }
 protected:
     std::vector<std::unique_ptr<IAccumulator>> CreateGroupAccumulators() const;
     void InitResultBatch();
@@ -227,6 +280,8 @@ protected:
     Scheme scheme_;
     int64_t seed_ = 0x9e3779b9;
     std::optional<Batch> result_batch_;
+    std::vector<int64_t> curr_types_;
+    bool is_consumed_ = false;
 };
 
 class OrderByLimitKOperator : public IOperator {
@@ -234,6 +289,7 @@ public:
     OrderByLimitKOperator(std::unique_ptr<IOperator> child, int k, bool is_desc, const std::vector<int>& order_by_ids, const Scheme& scheme);
     std::optional<Batch> Next() override;
     std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+    std::vector<int64_t> GetCurrColTypes() const override { return child_->GetCurrColTypes(); }
 protected:
     std::unique_ptr<IOperator> child_;
     int k_;
@@ -247,10 +303,10 @@ public:
     OrderByOperator(std::unique_ptr<IOperator> child, const std::vector<int>& order_by_ids, bool is_desc, const Scheme& scheme);
     std::optional<Batch> Next() override;
     std::vector<int> GetCurrColIds() const override { return child_->GetCurrColIds(); }
+    std::vector<int64_t> GetCurrColTypes() const override { return child_->GetCurrColTypes(); }
 protected:
     std::unique_ptr<IOperator> child_;
     std::vector<int> order_by_ids_;
     bool is_desc_;
     std::optional<Batch> result_batch_;
 };
-

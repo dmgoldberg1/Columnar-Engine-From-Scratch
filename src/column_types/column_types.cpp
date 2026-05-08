@@ -327,7 +327,7 @@ size_t Double::GetColumnByteSize() const {
 }
 
 std::string Double::GetCellAsString(int64_t i) const {
-    return "";
+    return std::to_string(value_[i]);
 }
 
 std::vector<std::string> Double::GetColumnAsString() const {
@@ -390,8 +390,6 @@ void Double::MergeHashes(std::vector<uint64_t>& hashes, std::vector<std::vector<
         group_name[i].push_back(std::to_string(value_[i]));
     }
 }
-
-
 
 
 
