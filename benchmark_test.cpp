@@ -19,6 +19,33 @@ Scheme GetDbScheme(const char* input_db_file) {
     return reader.GetScheme();
 }
 
+std::string ExtractRefererHost(const std::string& referer) {
+    std::string_view host = referer;
+    constexpr std::string_view http_prefix = "http://";
+    constexpr std::string_view https_prefix = "https://";
+    if (host.starts_with(http_prefix)) {
+        host.remove_prefix(http_prefix.size());
+    } else if (host.starts_with(https_prefix)) {
+        host.remove_prefix(https_prefix.size());
+    }
+    constexpr std::string_view www_prefix = "www.";
+    if (host.starts_with(www_prefix)) {
+        host.remove_prefix(www_prefix.size());
+    }
+    size_t slash_pos = host.find('/');
+    if (slash_pos != std::string_view::npos) {
+        host = host.substr(0, slash_pos);
+    }
+    return std::string(host);
+}
+
+std::string TruncateToMinute(const std::string& event_time) {
+    if (event_time.size() < 16) {
+        return event_time;
+    }
+    return event_time.substr(0, 16) + ":00";
+}
+
 TEST(ClickBenchQueriesTest, Query01CountAll) {
     const char* input_db_file = "db_file_benchmark.egg";
     Scheme scheme = GetDbScheme(input_db_file);
@@ -457,6 +484,58 @@ TEST(ClickBenchQueriesTest, Query18GroupByUserIdAndSearchPhraseLimit10) {
     }
 }
 
+TEST(ClickBenchQueriesTest, Query19GroupByUserIdMinuteAndSearchPhraseCountOrderByDescLimit10) {
+    const char* input_db_file = "db_file_benchmark.egg";
+    Scheme scheme = GetDbScheme(input_db_file);
+    std::vector<std::string> columns{"UserID", "EventTime", "SearchPhrase"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> group_by_fields{"UserID", "EventTime", "SearchPhrase"};
+    std::vector<std::string> aggr_cols{"SearchPhrase"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op{GlobalAggregationOperator::Op::COUNT};
+
+    std::vector<AggregationTransform> group_by_transforms(3);
+    group_by_transforms[1].fn = [](const CellTypes& value) -> CellTypes {
+        const std::string& event_time = std::get<std::string>(value);
+        if (event_time.size() < 16) {
+            return static_cast<int64_t>(0);
+        }
+        return static_cast<int64_t>(std::stoll(event_time.substr(14, 2)));
+    };
+    group_by_transforms[1].output_type = static_cast<int64_t>(Types::TypeInt64);
+
+    std::unique_ptr<IOperator> group_by_operator = std::make_unique<GroupByAggregationOperator>(
+        std::move(scan_operator),
+        group_by_fields,
+        aggr_cols,
+        aggr_op,
+        scheme,
+        std::vector<AggregationTransform>{},
+        group_by_transforms
+    );
+    std::vector<int> order_by_ids{3};
+    bool is_desc = true;
+    int limit = 10;
+    std::unique_ptr<IOperator> order_by_limit_operator =
+        std::make_unique<OrderByLimitKOperator>(std::move(group_by_operator), limit, is_desc, order_by_ids, scheme);
+    std::optional<Batch> batch = order_by_limit_operator->Next();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch.value().size(), 4);
+    std::vector<std::string> user_ids = batch.value()[0]->GetColumnAsString();
+    std::vector<std::string> minutes = batch.value()[1]->GetColumnAsString();
+    std::vector<std::string> search_phrases = batch.value()[2]->GetColumnAsString();
+    std::vector<std::string> counts = batch.value()[3]->GetColumnAsString();
+    EXPECT_EQ(user_ids.size(), 10);
+    EXPECT_EQ(minutes.size(), 10);
+    EXPECT_EQ(search_phrases.size(), 10);
+    EXPECT_EQ(counts.size(), 10);
+    for (int64_t i = 0; i < user_ids.size(); ++i) {
+        std::cout << user_ids[i] << ","
+                  << minutes[i] << ","
+                  << search_phrases[i] << ","
+                  << counts[i] << std::endl;
+    }
+}
+
 TEST(ClickBenchQueriesTest, Query20FilterUserId) {
     const char* input_db_file = "db_file_benchmark.egg";
     Scheme scheme = GetDbScheme(input_db_file);
@@ -675,6 +754,171 @@ TEST(ClickBenchQueriesTest, Query27SearchPhraseWhereNotEmptyOrderByEventTimeAndS
     }
 }
 
+TEST(ClickBenchQueriesTest, Query28GroupByCounterIdAvgLengthUrlCountHavingOrderByDescLimit25) {
+    const char* input_db_file = "db_file_benchmark.egg";
+    Scheme scheme = GetDbScheme(input_db_file);
+    std::vector<std::string> columns{"CounterID", "URL"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::unique_ptr<FilterCondition> where_condition =
+        std::make_unique<CompareFilter<std::string>>("URL", CompareFilter<std::string>::Op::NE, std::string(""), scheme);
+    std::unique_ptr<IOperator> where_operator = std::make_unique<FilterOperator>(std::move(scan_operator), std::move(where_condition));
+
+    std::vector<std::string> group_by_fields{"CounterID"};
+    std::vector<std::string> aggr_cols{"URL", "URL"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op{
+        GlobalAggregationOperator::Op::AVG,
+        GlobalAggregationOperator::Op::COUNT
+    };
+    AggregationTransform url_length_transform;
+    url_length_transform.fn = [](const CellTypes& value) -> CellTypes {
+        return static_cast<int64_t>(std::get<std::string>(value).size());
+    };
+    url_length_transform.output_type = static_cast<int64_t>(Types::TypeInt64);
+    std::vector<AggregationTransform> transforms{
+        url_length_transform,
+        {}
+    };
+    std::unique_ptr<IOperator> group_by_operator = std::make_unique<GroupByAggregationOperator>(
+        std::move(where_operator),
+        group_by_fields,
+        aggr_cols,
+        aggr_op,
+        scheme,
+        transforms
+    );
+
+    std::unique_ptr<FilterCondition> having_condition =
+        std::make_unique<CompareFilterByIndex>(2, Column::Op::GT, static_cast<int64_t>(100000));
+    std::unique_ptr<IOperator> having_operator = std::make_unique<FilterOperator>(std::move(group_by_operator), std::move(having_condition));
+
+    std::vector<int> order_by_ids{1};
+    bool is_desc = true;
+    int limit = 25;
+    std::unique_ptr<IOperator> order_by_limit_operator =
+        std::make_unique<OrderByLimitKOperator>(std::move(having_operator), limit, is_desc, order_by_ids, scheme);
+
+    std::optional<Batch> batch = order_by_limit_operator->Next();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch.value().size(), 3);
+    std::vector<std::string> counter_ids = batch.value()[0]->GetColumnAsString();
+    std::vector<std::string> avg_url_lengths = batch.value()[1]->GetColumnAsString();
+    std::vector<std::string> counts = batch.value()[2]->GetColumnAsString();
+    EXPECT_EQ(counter_ids.size(), 25);
+    EXPECT_EQ(avg_url_lengths.size(), 25);
+    EXPECT_EQ(counts.size(), 25);
+    for (int64_t i = 0; i < counter_ids.size(); ++i) {
+        std::cout << counter_ids[i] << ","
+                  << avg_url_lengths[i] << ","
+                  << counts[i] << std::endl;
+    }
+}
+
+TEST(ClickBenchQueriesTest, Query29GroupByRefererHostAvgLengthCountMinHavingOrderByDescLimit25) {
+    const char* input_db_file = "db_file_benchmark.egg";
+    Scheme scheme = GetDbScheme(input_db_file);
+    std::vector<std::string> columns{"Referer"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::unique_ptr<FilterCondition> where_condition =
+        std::make_unique<CompareFilter<std::string>>("Referer", CompareFilter<std::string>::Op::NE, std::string(""), scheme);
+    std::unique_ptr<IOperator> where_operator = std::make_unique<FilterOperator>(std::move(scan_operator), std::move(where_condition));
+
+    std::vector<std::string> group_by_fields{"Referer"};
+    std::vector<std::string> aggr_cols{"Referer", "Referer", "Referer"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op{
+        GlobalAggregationOperator::Op::AVG,
+        GlobalAggregationOperator::Op::COUNT,
+        GlobalAggregationOperator::Op::MIN
+    };
+
+    AggregationTransform referer_length_transform;
+    referer_length_transform.fn = [](const CellTypes& value) -> CellTypes {
+        return static_cast<int64_t>(std::get<std::string>(value).size());
+    };
+    referer_length_transform.output_type = static_cast<int64_t>(Types::TypeInt64);
+
+    AggregationTransform referer_host_transform;
+    referer_host_transform.fn = [](const CellTypes& value) -> CellTypes {
+        return ExtractRefererHost(std::get<std::string>(value));
+    };
+    referer_host_transform.output_type = static_cast<int64_t>(Types::TypeString);
+
+    std::unique_ptr<IOperator> group_by_operator = std::make_unique<GroupByAggregationOperator>(
+        std::move(where_operator),
+        group_by_fields,
+        aggr_cols,
+        aggr_op,
+        scheme,
+        std::vector<AggregationTransform>{referer_length_transform, {}, {}},
+        std::vector<AggregationTransform>{referer_host_transform}
+    );
+
+    std::unique_ptr<FilterCondition> having_condition =
+        std::make_unique<CompareFilterByIndex>(2, Column::Op::GT, static_cast<int64_t>(100000));
+    std::unique_ptr<IOperator> having_operator = std::make_unique<FilterOperator>(std::move(group_by_operator), std::move(having_condition));
+
+    std::vector<int> order_by_ids{1};
+    bool is_desc = true;
+    int limit = 25;
+    std::unique_ptr<IOperator> order_by_limit_operator =
+        std::make_unique<OrderByLimitKOperator>(std::move(having_operator), limit, is_desc, order_by_ids, scheme);
+
+    std::optional<Batch> batch = order_by_limit_operator->Next();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch.value().size(), 4);
+    std::vector<std::string> hosts = batch.value()[0]->GetColumnAsString();
+    std::vector<std::string> avg_lengths = batch.value()[1]->GetColumnAsString();
+    std::vector<std::string> counts = batch.value()[2]->GetColumnAsString();
+    std::vector<std::string> min_referers = batch.value()[3]->GetColumnAsString();
+    EXPECT_EQ(hosts.size(), 25);
+    EXPECT_EQ(avg_lengths.size(), 25);
+    EXPECT_EQ(counts.size(), 25);
+    EXPECT_EQ(min_referers.size(), 25);
+    for (int64_t i = 0; i < hosts.size(); ++i) {
+        std::cout << hosts[i] << ","
+                  << avg_lengths[i] << ","
+                  << counts[i] << ","
+                  << min_referers[i] << std::endl;
+    }
+}
+
+TEST(ClickBenchQueriesTest, Query30ManySumsOfResolutionWidthWithOffsets) {
+    const char* input_db_file = "db_file_benchmark.egg";
+    Scheme scheme = GetDbScheme(input_db_file);
+
+    constexpr int kNumAggregations = 90;
+    std::vector<std::string> columns(kNumAggregations, "ResolutionWidth");
+    std::vector<GlobalAggregationOperator::Op> aggr_ops(kNumAggregations, GlobalAggregationOperator::Op::SUM);
+    std::vector<AggregationTransform> transforms;
+    transforms.reserve(kNumAggregations);
+
+    for (int offset = 0; offset < kNumAggregations; ++offset) {
+        AggregationTransform transform;
+        transform.fn = [offset](const CellTypes& value) -> CellTypes {
+            return std::get<int64_t>(value) + static_cast<int64_t>(offset);
+        };
+        transform.output_type = static_cast<int64_t>(Types::TypeInt64);
+        transforms.push_back(std::move(transform));
+    }
+
+    std::unique_ptr<IOperator> scan_operator =
+        std::make_unique<ScanOperator>(input_db_file, std::vector<std::string>{"ResolutionWidth"});
+    std::unique_ptr<IOperator> aggregation_operator =
+        std::make_unique<GlobalAggregationOperator>(columns, std::move(scan_operator), aggr_ops, scheme, transforms);
+
+    std::optional<Batch> batch = aggregation_operator->Next();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch.value().size(), kNumAggregations);
+
+    for (int i = 0; i < kNumAggregations; ++i) {
+        EXPECT_EQ(batch.value()[i]->GetRowCount(), 1);
+        std::cout << batch.value()[i]->GetCellAsString(0);
+        if (i + 1 != kNumAggregations) {
+            std::cout << ",";
+        }
+    }
+    std::cout << std::endl;
+}
+
 TEST(ClickBenchQueriesTest, Query31GroupBySearchEngineIdAndClientIpCountSumAvgOrderByCountDescLimit10) {
     const char* input_db_file = "db_file_benchmark.egg";
     Scheme scheme = GetDbScheme(input_db_file);
@@ -847,6 +1091,38 @@ TEST(ClickBenchQueriesTest, Query35GroupByConstantAndUrlCountOrderByDescLimit10)
     EXPECT_EQ(counts.size(), 10);
     for (int64_t i = 0; i < urls.size(); ++i) {
         std::cout << 1 << "," << urls[i] << "," << counts[i] << std::endl;
+    }
+}
+
+TEST(ClickBenchQueriesTest, Query36GroupByClientIpDerivedColumnsCountOrderByDescLimit10) {
+    const char* input_db_file = "db_file_benchmark.egg";
+    Scheme scheme = GetDbScheme(input_db_file);
+    std::vector<std::string> columns{"ClientIP"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::vector<std::string> group_by_fields{"ClientIP"};
+    std::vector<std::string> aggr_cols{"ClientIP"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op{GlobalAggregationOperator::Op::COUNT};
+    std::unique_ptr<IOperator> group_by_operator =
+        std::make_unique<GroupByAggregationOperator>(std::move(scan_operator), group_by_fields, aggr_cols, aggr_op, scheme);
+    std::vector<int> order_by_ids{1};
+    bool is_desc = true;
+    int limit = 10;
+    std::unique_ptr<IOperator> order_by_limit_operator =
+        std::make_unique<OrderByLimitKOperator>(std::move(group_by_operator), limit, is_desc, order_by_ids, scheme);
+    std::optional<Batch> batch = order_by_limit_operator->Next();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch.value().size(), 2);
+    std::vector<std::string> client_ips = batch.value()[0]->GetColumnAsString();
+    std::vector<std::string> counts = batch.value()[1]->GetColumnAsString();
+    EXPECT_EQ(client_ips.size(), 10);
+    EXPECT_EQ(counts.size(), 10);
+    for (int64_t i = 0; i < client_ips.size(); ++i) {
+        int64_t client_ip = std::stoll(client_ips[i]);
+        std::cout << client_ip << ","
+                  << client_ip - 1 << ","
+                  << client_ip - 2 << ","
+                  << client_ip - 3 << ","
+                  << counts[i] << std::endl;
     }
 }
 
@@ -1073,6 +1349,63 @@ TEST(ClickBenchQueriesTest, Query42GroupByWindowClientWidthAndHeightCountFiltere
     for (int64_t i = offset; i < offset + limit; ++i) {
         std::cout << window_client_widths[i] << ","
                   << window_client_heights[i] << ","
+                  << page_views[i] << std::endl;
+    }
+}
+
+TEST(ClickBenchQueriesTest, Query43GroupByDateTruncMinuteCountFilteredJulyCounter62OrderByAscLimit10Offset1000) {
+    const char* input_db_file = "db_file_benchmark.egg";
+    Scheme scheme = GetDbScheme(input_db_file);
+    std::vector<std::string> columns{"CounterID", "EventDate", "IsRefresh", "DontCountHits", "EventTime"};
+    std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
+    std::unique_ptr<FilterCondition> condition = std::make_unique<AndFilter>(
+        std::make_unique<CompareFilter<int64_t>>("CounterID", CompareFilter<int64_t>::Op::EQ, static_cast<int64_t>(62), scheme),
+        std::make_unique<AndFilter>(
+            std::make_unique<CompareFilter<std::string>>("EventDate", CompareFilter<std::string>::Op::GE, std::string("2013-07-14"), scheme),
+            std::make_unique<AndFilter>(
+                std::make_unique<CompareFilter<std::string>>("EventDate", CompareFilter<std::string>::Op::LE, std::string("2013-07-15"), scheme),
+                std::make_unique<AndFilter>(
+                    std::make_unique<CompareFilter<int64_t>>("IsRefresh", CompareFilter<int64_t>::Op::EQ, static_cast<int64_t>(0), scheme),
+                    std::make_unique<CompareFilter<int64_t>>("DontCountHits", CompareFilter<int64_t>::Op::EQ, static_cast<int64_t>(0), scheme)
+                )
+            )
+        )
+    );
+    std::unique_ptr<IOperator> filter_operator = std::make_unique<FilterOperator>(std::move(scan_operator), std::move(condition));
+
+    AggregationTransform minute_trunc_transform;
+    minute_trunc_transform.fn = [](const CellTypes& value) -> CellTypes {
+        return TruncateToMinute(std::get<std::string>(value));
+    };
+    minute_trunc_transform.output_type = static_cast<int64_t>(Types::TypeString);
+
+    std::vector<std::string> group_by_fields{"EventTime"};
+    std::vector<std::string> aggr_cols{"EventTime"};
+    std::vector<GlobalAggregationOperator::Op> aggr_op{GlobalAggregationOperator::Op::COUNT};
+    std::unique_ptr<IOperator> group_by_operator = std::make_unique<GroupByAggregationOperator>(
+        std::move(filter_operator),
+        group_by_fields,
+        aggr_cols,
+        aggr_op,
+        scheme,
+        std::vector<AggregationTransform>{},
+        std::vector<AggregationTransform>{minute_trunc_transform}
+    );
+
+    std::vector<int> order_by_ids{0};
+    bool is_desc = false;
+    std::unique_ptr<IOperator> order_by_operator = std::make_unique<OrderByOperator>(std::move(group_by_operator), order_by_ids, is_desc, scheme);
+    std::optional<Batch> batch = order_by_operator->Next();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch.value().size(), 2);
+    std::vector<std::string> minutes = batch.value()[0]->GetColumnAsString();
+    std::vector<std::string> page_views = batch.value()[1]->GetColumnAsString();
+    int64_t offset = 1000;
+    int64_t limit = 10;
+    ASSERT_GE(minutes.size(), offset + limit);
+    ASSERT_GE(page_views.size(), offset + limit);
+    for (int64_t i = offset; i < offset + limit; ++i) {
+        std::cout << minutes[i] << ","
                   << page_views[i] << std::endl;
     }
 }

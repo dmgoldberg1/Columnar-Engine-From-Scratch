@@ -4,8 +4,125 @@
 
 #include <algorithm>
 #include <iostream>
-#include <unordered_map>
 #include <queue>
+#include <stdexcept>
+#include <unordered_map>
+
+namespace {
+
+void EnsureTransformsSize(size_t expected_size, std::vector<AggregationTransform>& transforms) {
+    if (transforms.empty()) {
+        transforms.resize(expected_size);
+        return;
+    }
+    if (transforms.size() != expected_size) {
+        throw std::runtime_error("Aggregation transform count must match aggregation count.");
+    }
+}
+
+int64_t GetEffectiveType(int64_t source_type, const AggregationTransform& transform) {
+    if (!transform.HasValue()) {
+        return source_type;
+    }
+    if (!transform.output_type.has_value()) {
+        throw std::runtime_error("Aggregation transform requires output_type.");
+    }
+    return transform.output_type.value();
+}
+
+std::string CellToString(const CellTypes& value) {
+    return std::visit([](auto&& arg) -> std::string {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, std::string>) {
+            return arg;
+        } else {
+            return std::to_string(arg);
+        }
+    }, value);
+}
+
+std::vector<std::string> BuildGroupKeyNames(
+    const Batch& batch,
+    const std::vector<int>& group_by_ids,
+    const std::vector<AggregationTransform>& group_by_transforms,
+    int64_t row_id
+) {
+    std::vector<std::string> result;
+    result.reserve(group_by_ids.size());
+    for (size_t i = 0; i < group_by_ids.size(); ++i) {
+        CellTypes value = batch[group_by_ids[i]]->Get(row_id);
+        if (group_by_transforms[i].HasValue()) {
+            value = group_by_transforms[i].Apply(value);
+        }
+        result.push_back(CellToString(value));
+    }
+    return result;
+}
+
+std::unique_ptr<IAccumulator> CreateAccumulator(GlobalAggregationOperator::Op op, int64_t effective_type, const AggregationTransform& transform) {
+    switch (op) {
+        case GlobalAggregationOperator::Op::SUM:
+            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+                return std::make_unique<SumIntAccumulator>(transform);
+            }
+            return std::make_unique<SumFloatAccumulator>(transform);
+        case GlobalAggregationOperator::Op::AVG:
+            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+                return std::make_unique<AvgAccumulator>(std::make_unique<SumIntAccumulator>(transform));
+            }
+            return std::make_unique<AvgAccumulator>(std::make_unique<SumFloatAccumulator>(transform));
+        case GlobalAggregationOperator::Op::MIN:
+            return std::make_unique<MinAccumulator>();
+        case GlobalAggregationOperator::Op::MAX:
+            return std::make_unique<MaxAccumulator>();
+        case GlobalAggregationOperator::Op::COUNT:
+            return std::make_unique<CountAccumulator>();
+        case GlobalAggregationOperator::Op::CountDistinct:
+            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+                return std::make_unique<CountDistinctIntAccumulator>();
+            }
+            return std::make_unique<CountDistinctStringAccumulator>();
+    }
+    throw std::runtime_error("Unknown aggregation op.");
+}
+
+void AddResultColumn(Batch& batch, std::vector<int64_t>& curr_types, GlobalAggregationOperator::Op op, int64_t effective_type) {
+    switch (op) {
+        case GlobalAggregationOperator::Op::SUM:
+            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+                batch.push_back(std::make_unique<Int64>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeInt64));
+            } else {
+                batch.push_back(std::make_unique<Double>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeDouble));
+            }
+            return;
+        case GlobalAggregationOperator::Op::AVG:
+            batch.push_back(std::make_unique<Double>());
+            curr_types.push_back(static_cast<int64_t>(Types::TypeDouble));
+            return;
+        case GlobalAggregationOperator::Op::MIN:
+        case GlobalAggregationOperator::Op::MAX:
+            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+                batch.push_back(std::make_unique<Int64>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeInt64));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeDouble)) {
+                batch.push_back(std::make_unique<Double>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeDouble));
+            } else {
+                batch.push_back(std::make_unique<String>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeString));
+            }
+            return;
+        case GlobalAggregationOperator::Op::COUNT:
+        case GlobalAggregationOperator::Op::CountDistinct:
+            batch.push_back(std::make_unique<Int64>());
+            curr_types.push_back(static_cast<int64_t>(Types::TypeInt64));
+            return;
+    }
+}
+
+} // namespace
 
 ScanOperator::ScanOperator(const std::string& filename, const std::vector<std::string>& columns) 
     : columns_(columns),
@@ -27,11 +144,11 @@ std::optional<Batch> ScanOperator::Next() {
 }
 
 std::optional<Batch> FilterOperator::Next() {
+    std::vector<int> curr_ids = child_->GetCurrColIds();
     std::optional<Batch> batch = child_->Next();
     if (!batch.has_value()) {
         return std::nullopt;
     }
-    std::vector<int> curr_ids = child_->GetCurrColIds();
     int64_t row_count = batch.value()[curr_ids.front()]->GetRowCount();
     std::vector<int64_t> filtered_ids;
     for (int64_t i = 0; i < row_count; ++i) {
@@ -50,26 +167,93 @@ std::vector<int> FilterOperator::GetCurrColIds() const {
 }
 
 void SumIntAccumulator::Update(const Column* column) {
+    if (const auto* int_column = dynamic_cast<const Int64*>(column)) {
+        if (!transform_.HasValue()) {
+            sum_ += static_cast<__int128_t>(int_column->GetSum());
+            return;
+        }
+        auto transform = [this](int64_t value) -> int64_t {
+            return std::get<int64_t>(transform_.Apply(value));
+        };
+        sum_ += static_cast<__int128_t>(int_column->GetSum(transform));
+        return;
+    }
     int64_t row_count = column->GetRowCount();
     for (int64_t i = 0; i < row_count; ++i) {
-        sum_ += static_cast<__int128_t>(std::get<int64_t>(column->Get(i)));
+        CellTypes value = transform_.HasValue() ? transform_.Apply(column->Get(i)) : column->Get(i);
+        sum_ += static_cast<__int128_t>(std::get<int64_t>(value));
     }
 }
 
 void SumIntAccumulator::Update(const Column* column, const std::vector<uint64_t>& mask) {
+    if (const auto* int_column = dynamic_cast<const Int64*>(column)) {
+        if (!transform_.HasValue()) {
+            sum_ += static_cast<__int128_t>(int_column->GetSum(mask));
+            return;
+        }
+        auto transform = [this](int64_t value) -> int64_t {
+            return std::get<int64_t>(transform_.Apply(value));
+        };
+        sum_ += static_cast<__int128_t>(int_column->GetSum(mask, transform));
+        return;
+    }
     for (uint64_t row_id : mask) {
-        sum_ += static_cast<__int128_t>(std::get<int64_t>(column->Get(row_id)));
+        CellTypes value = transform_.HasValue() ? transform_.Apply(column->Get(row_id)) : column->Get(row_id);
+        sum_ += static_cast<__int128_t>(std::get<int64_t>(value));
     }
 }
 
 
 
 void SumFloatAccumulator::Update(const Column* column) {
-
+    if (const auto* double_column = dynamic_cast<const Double*>(column)) {
+        if (!transform_.HasValue()) {
+            sum_ += double_column->GetSum();
+            return;
+        }
+        auto transform = [this](double value) -> double {
+            return std::get<double>(transform_.Apply(value));
+        };
+        sum_ += double_column->GetSum(transform);
+        return;
+    }
+    int64_t row_count = column->GetRowCount();
+    for (int64_t i = 0; i < row_count; ++i) {
+        CellTypes value = transform_.HasValue() ? transform_.Apply(column->Get(i)) : column->Get(i);
+        sum_ += std::visit([](auto&& arg) -> double {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, int64_t> || std::is_same_v<T, double>) {
+                return static_cast<double>(arg);
+            } else {
+                throw std::runtime_error("SumFloatAccumulator expects numeric input.");
+            }
+        }, value);
+    }
 }
 
 void SumFloatAccumulator::Update(const Column* column, const std::vector<uint64_t>& mask) {
-    
+    if (const auto* double_column = dynamic_cast<const Double*>(column)) {
+        if (!transform_.HasValue()) {
+            sum_ += double_column->GetSum(mask);
+            return;
+        }
+        auto transform = [this](double value) -> double {
+            return std::get<double>(transform_.Apply(value));
+        };
+        sum_ += double_column->GetSum(mask, transform);
+        return;
+    }
+    for (uint64_t row_id : mask) {
+        CellTypes value = transform_.HasValue() ? transform_.Apply(column->Get(row_id)) : column->Get(row_id);
+        sum_ += std::visit([](auto&& arg) -> double {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, int64_t> || std::is_same_v<T, double>) {
+                return static_cast<double>(arg);
+            } else {
+                throw std::runtime_error("SumFloatAccumulator expects numeric input.");
+            }
+        }, value);
+    }
 }
 
 CellTypes AvgAccumulator::GetResult() const {
@@ -171,70 +355,16 @@ void CountDistinctStringAccumulator::Update(const Column* column, const std::vec
 }
 
 void GlobalAggregationOperator::Init() {
+    EnsureTransformsSize(columns_.size(), transforms_);
     int i = -1;
     result_batch_ = std::vector<std::unique_ptr<Column>>();
     curr_types_.clear();
     for (auto op : op_) {
         ++i;
-        int64_t col_type = scheme_.GetTypeInfo(columns_[i]);
-        switch (op) {
-            case Op::SUM:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    accumulators_.push_back(std::make_unique<SumIntAccumulator>());
-                    result_batch_.value().push_back(std::make_unique<Int64>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                } else {
-                    accumulators_.push_back(std::make_unique<SumFloatAccumulator>());
-                    result_batch_.value().push_back(std::make_unique<Double>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                }
-                break;
-            case Op::MIN:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result_batch_.value().push_back(std::make_unique<Int64>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                } else if (col_type == static_cast<int64_t>(Types::TypeDouble)) {
-                    result_batch_.value().push_back(std::make_unique<Double>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                } else {
-                    result_batch_.value().push_back(std::make_unique<String>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeString));
-                }
-                accumulators_.push_back(std::make_unique<MinAccumulator>());
-                break;
-            case Op::MAX:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result_batch_.value().push_back(std::make_unique<Int64>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                } else if (col_type == static_cast<int64_t>(Types::TypeDouble)) {
-                    result_batch_.value().push_back(std::make_unique<Double>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                } else {
-                    result_batch_.value().push_back(std::make_unique<String>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeString));
-                }
-                accumulators_.push_back(std::make_unique<MaxAccumulator>());
-                break;
-            case Op::AVG:
-                accumulators_.push_back(std::make_unique<AvgAccumulator>(std::make_unique<SumIntAccumulator>()));
-                result_batch_.value().push_back(std::make_unique<Double>());
-                curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                break;
-            case Op::COUNT:
-                accumulators_.push_back(std::make_unique<CountAccumulator>());
-                result_batch_.value().push_back(std::make_unique<Int64>());
-                curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                break;
-            case Op::CountDistinct:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    accumulators_.push_back(std::make_unique<CountDistinctIntAccumulator>());
-                } else {
-                    accumulators_.push_back(std::make_unique<CountDistinctStringAccumulator>());
-                }
-                result_batch_.value().push_back(std::make_unique<Int64>());
-                curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                break;
-        }
+        int64_t source_type = scheme_.GetTypeInfo(columns_[i]);
+        int64_t effective_type = GetEffectiveType(source_type, transforms_[i]);
+        accumulators_.push_back(CreateAccumulator(op, effective_type, transforms_[i]));
+        AddResultColumn(result_batch_.value(), curr_types_, op, effective_type);
     }
 }
 
@@ -261,40 +391,16 @@ std::vector<std::unique_ptr<IAccumulator>> GroupByAggregationOperator::CreateGro
     int i = -1;
     for (auto op : op_) {
         ++i;
-        int64_t col_type = scheme_.GetTypeInfo(aggr_col_names_[i]);
-        switch (op) {
-            case Op::SUM:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result.push_back(std::make_unique<SumIntAccumulator>());
-                } else {
-                    result.push_back(std::make_unique<SumFloatAccumulator>());
-                }
-                break;
-            case Op::MIN:
-                result.push_back(std::make_unique<MinAccumulator>());
-                break;
-            case Op::MAX:
-                result.push_back(std::make_unique<MaxAccumulator>());
-                break;
-            case Op::AVG:
-                result.push_back(std::make_unique<AvgAccumulator>(std::make_unique<SumIntAccumulator>()));
-                break;
-            case Op::COUNT:
-                result.push_back(std::make_unique<CountAccumulator>());
-                break;
-            case Op::CountDistinct:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result.push_back(std::make_unique<CountDistinctIntAccumulator>());
-                } else {
-                    result.push_back(std::make_unique<CountDistinctStringAccumulator>());
-                }
-                break;
-        }
+        int64_t source_type = scheme_.GetTypeInfo(aggr_col_names_[i]);
+        int64_t effective_type = GetEffectiveType(source_type, transforms_[i]);
+        result.push_back(CreateAccumulator(op, effective_type, transforms_[i]));
     }
     return std::move(result);
 }
 
 void GroupByAggregationOperator::InitResultBatch() {
+    EnsureTransformsSize(aggr_col_names_.size(), transforms_);
+    EnsureTransformsSize(group_by_fields_.size(), group_by_transforms_);
     result_batch_ = std::vector<std::unique_ptr<Column>>();
     curr_types_.clear();
     for (int64_t i = 0; i < group_by_fields_.size(); ++i) {
@@ -304,54 +410,9 @@ void GroupByAggregationOperator::InitResultBatch() {
     int i = -1;
     for (auto op : op_) {
         ++i;
-        int64_t col_type = scheme_.GetTypeInfo(aggr_col_names_[i]);
-        switch (op) {
-            case Op::SUM:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result_batch_.value().push_back(std::make_unique<Int64>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                } else {
-                    result_batch_.value().push_back(std::make_unique<Double>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                }
-                break;
-            case Op::MIN:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result_batch_.value().push_back(std::make_unique<Int64>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                } else if (col_type == static_cast<int64_t>(Types::TypeDouble)) {
-                    result_batch_.value().push_back(std::make_unique<Double>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                } else {
-                    result_batch_.value().push_back(std::make_unique<String>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeString));
-                }
-                break;
-            case Op::MAX:
-                if (col_type == static_cast<int64_t>(Types::TypeInt64)) {
-                    result_batch_.value().push_back(std::make_unique<Int64>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                } else if (col_type == static_cast<int64_t>(Types::TypeDouble)) {
-                    result_batch_.value().push_back(std::make_unique<Double>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                } else {
-                    result_batch_.value().push_back(std::make_unique<String>());
-                    curr_types_.push_back(static_cast<int64_t>(Types::TypeString));
-                }
-                break;
-            case Op::AVG:
-                result_batch_.value().push_back(std::make_unique<Double>());
-                curr_types_.push_back(static_cast<int64_t>(Types::TypeDouble));
-                break;
-            case Op::COUNT:
-                result_batch_.value().push_back(std::make_unique<Int64>());
-                curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                break;
-            case Op::CountDistinct:
-                result_batch_.value().push_back(std::make_unique<Int64>());
-                curr_types_.push_back(static_cast<int64_t>(Types::TypeInt64));
-                break;
-        }
+        int64_t source_type = scheme_.GetTypeInfo(aggr_col_names_[i]);
+        int64_t effective_type = GetEffectiveType(source_type, transforms_[i]);
+        AddResultColumn(result_batch_.value(), curr_types_, op, effective_type);
     }
 }
 
@@ -359,6 +420,7 @@ std::optional<Batch> GroupByAggregationOperator::Next() {
     if (is_consumed_) {
         return std::nullopt;
     }
+    EnsureTransformsSize(group_by_fields_.size(), group_by_transforms_);
     std::vector<int> aggr_ids;
     std::vector<int> group_by_ids;
     std::unordered_map<uint64_t, int64_t> hash_to_group_id;
@@ -374,43 +436,42 @@ std::optional<Batch> GroupByAggregationOperator::Next() {
 
     while (auto batch = child_->Next()) {
         std::vector<uint64_t> hashes;
-        std::vector<std::vector<std::string>> row_id_to_name;
-        std::vector<uint64_t> row_to_group_id;
+        std::vector<std::vector<std::string>> empty_group_names;
         int64_t row_count = batch.value()[group_by_ids.front()]->GetRowCount();
         if (row_count == 0) {
             continue;
         }
         hashes.resize(row_count);
-        row_id_to_name.resize(row_count);
         for (int64_t i = 0; i < hashes.size(); ++i) {
             hashes[i] = seed_;
         }
-        for (auto id : group_by_ids) {
-            batch.value()[id]->MergeHashes(hashes, row_id_to_name);
+        for (size_t i = 0; i < group_by_ids.size(); ++i) {
+            const AggregationTransform& transform = group_by_transforms_[i];
+            batch.value()[group_by_ids[i]]->MergeHashes(
+                hashes,
+                empty_group_names,
+                transform.HasValue() ? transform.fn : std::function<CellTypes(const CellTypes&)>{}
+            );
         }
-        uint64_t row_id = 0;
-        for (uint64_t hash : hashes) {
+        std::vector<uint64_t> single_row(1);
+        for (uint64_t row_id = 0; row_id < hashes.size(); ++row_id) {
+            uint64_t hash = hashes[row_id];
             auto it = hash_to_group_id.find(hash);
+            uint64_t current_group_id;
             if (it == hash_to_group_id.end()) {
                 ++group_id;
                 hash_to_group_id.emplace(hash, group_id);
-                row_to_group_id.push_back(group_id);
-                group_name.push_back(std::move(row_id_to_name[row_id]));
+                current_group_id = group_id;
+                group_name.push_back(BuildGroupKeyNames(batch.value(), group_by_ids, group_by_transforms_, row_id));
                 std::vector<std::unique_ptr<IAccumulator>> accumulators = CreateGroupAccumulators();
                 group_to_accumulators.push_back(std::move(accumulators));
             } else {
-                row_to_group_id.push_back(it->second);
+                current_group_id = it->second;
             }
-            ++row_id;
-        }
-        std::unordered_map<uint64_t, std::vector<uint64_t>> groups;
-        for (uint64_t row_id = 0; row_id < row_to_group_id.size(); ++row_id) {
-            groups[row_to_group_id[row_id]].push_back(row_id);
-        }
-        for (auto& [id, rows] : groups) {
+            single_row[0] = row_id;
             int aggr_col_id = 0;
-            for (auto& accumulator : group_to_accumulators[id]) {
-                accumulator->Update(batch.value()[aggr_ids[aggr_col_id]].get(), rows);
+            for (auto& accumulator : group_to_accumulators[current_group_id]) {
+                accumulator->Update(batch.value()[aggr_ids[aggr_col_id]].get(), single_row);
                 ++aggr_col_id;
             }
         }

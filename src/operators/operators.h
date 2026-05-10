@@ -3,6 +3,7 @@
 #include "../column_types/column_types.h"
 #include "../file_reader/file_reader.h"
 
+#include <functional>
 #include <optional>
 #include <unordered_set>
 
@@ -55,6 +56,23 @@ protected:
     Op op_;
     T value_;
     Scheme scheme_;
+};
+
+class CompareFilterByIndex : public FilterCondition {
+public:
+    using Op = Column::Op;
+
+    CompareFilterByIndex(int column_index, Op op, CellTypes value)
+        : column_index_(column_index), op_(op), value_(std::move(value)) {}
+
+    bool Evaluate(const Batch& batch, size_t row_index) const override {
+        return batch[column_index_]->Compare(row_index, op_, value_);
+    }
+
+protected:
+    int column_index_;
+    Op op_;
+    CellTypes value_;
 };
 
 class LikeFilter : public FilterCondition {
@@ -123,6 +141,24 @@ protected:
     std::unique_ptr<FilterCondition> condition_;
 };
 
+struct AggregationTransform {
+    using Fn = std::function<CellTypes(const CellTypes&)>;
+
+    Fn fn;
+    std::optional<int64_t> output_type;
+
+    bool HasValue() const {
+        return static_cast<bool>(fn);
+    }
+
+    CellTypes Apply(const CellTypes& value) const {
+        if (!HasValue()) {
+            return value;
+        }
+        return fn(value);
+    }
+};
+
 class IAccumulator {
 public:
     virtual ~IAccumulator() = default;
@@ -133,20 +169,24 @@ public:
 
 class SumIntAccumulator : public IAccumulator {
 public:
+    explicit SumIntAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override { return static_cast<int64_t>(sum_); }
     __int128_t GetWideResult() const { return sum_; }
 protected:
+    AggregationTransform transform_;
     __int128_t sum_ = 0;
 };
 
 class SumFloatAccumulator : public IAccumulator {
 public:
+    explicit SumFloatAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const { return sum_; }
 protected:
+    AggregationTransform transform_;
     double sum_ = 0;
 };
 
@@ -174,6 +214,7 @@ protected:
 
 class MinAccumulator : public IAccumulator {
 public:
+    explicit MinAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
@@ -181,12 +222,14 @@ public:
     }
 
 protected:
+    AggregationTransform transform_;
     CellTypes min_;
     bool has_data_ = false;
 };
 
 class MaxAccumulator : public IAccumulator {
 public:
+    explicit MaxAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
@@ -194,6 +237,7 @@ public:
     }
 
 protected:
+    AggregationTransform transform_;
     CellTypes max_;
     bool has_data_ = false;
 };
@@ -202,23 +246,27 @@ protected:
 
 class CountDistinctIntAccumulator : public IAccumulator {
 public:
+    explicit CountDistinctIntAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return static_cast<int64_t>(set_.size());
     }
 protected:
+    AggregationTransform transform_;
     std::unordered_set<int64_t> set_;
 };
 
 class CountDistinctStringAccumulator : public IAccumulator {
 public:
+    explicit CountDistinctStringAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return static_cast<int64_t>(set_.size());
     }
 protected:
+    AggregationTransform transform_;
     std::unordered_set<std::string> set_;
 };
 
@@ -226,7 +274,8 @@ protected:
 class GlobalAggregationOperator : public IOperator {
 public:
     enum class Op {SUM, AVG, COUNT, MIN, MAX, CountDistinct};
-    GlobalAggregationOperator(const std::vector<std::string>& columns, std::unique_ptr<IOperator> child, std::vector<Op> op, const Scheme& scheme) : columns_(columns), child_(std::move(child)), op_(op), scheme_(scheme) {
+    GlobalAggregationOperator(const std::vector<std::string>& columns, std::unique_ptr<IOperator> child, std::vector<Op> op, const Scheme& scheme, std::vector<AggregationTransform> transforms = {})
+        : columns_(columns), child_(std::move(child)), op_(op), scheme_(scheme), transforms_(std::move(transforms)) {
         Init();
     }
     std::optional<Batch> Next() override;
@@ -249,21 +298,34 @@ protected:
     Scheme scheme_;
     std::optional<Batch> result_batch_;
     std::vector<int64_t> curr_types_;
+    std::vector<AggregationTransform> transforms_;
 };
 
 class GroupByAggregationOperator : public IOperator {
 public:
     using Op = GlobalAggregationOperator::Op;
-    GroupByAggregationOperator(std::unique_ptr<IOperator> child, const std::vector<std::string>& group_by_fields, const std::vector<std::string>& aggr_col_names, const std::vector<Op>& op, const Scheme& scheme) : child_(std::move(child)), group_by_fields_(group_by_fields), aggr_col_names_(aggr_col_names), op_(op), scheme_(scheme) {
+    GroupByAggregationOperator(
+        std::unique_ptr<IOperator> child,
+        const std::vector<std::string>& group_by_fields,
+        const std::vector<std::string>& aggr_col_names,
+        const std::vector<Op>& op,
+        const Scheme& scheme,
+        std::vector<AggregationTransform> transforms = {},
+        std::vector<AggregationTransform> group_by_transforms = {}
+    )
+        : child_(std::move(child)),
+          group_by_fields_(group_by_fields),
+          aggr_col_names_(aggr_col_names),
+          op_(op),
+          scheme_(scheme),
+          transforms_(std::move(transforms)),
+          group_by_transforms_(std::move(group_by_transforms)) {
         InitResultBatch();
     }
     std::optional<Batch> Next() override;
     std::vector<int> GetCurrColIds() const override {
         std::vector<int> result;
-        if (!result_batch_.has_value()) {
-            return result;
-        }
-        for (int i = 0; i < result_batch_.value().size(); ++i) {
+        for (int i = 0; i < curr_types_.size(); ++i) {
             result.push_back(i);
         }
         return result;
@@ -282,6 +344,8 @@ protected:
     std::optional<Batch> result_batch_;
     std::vector<int64_t> curr_types_;
     bool is_consumed_ = false;
+    std::vector<AggregationTransform> transforms_;
+    std::vector<AggregationTransform> group_by_transforms_;
 };
 
 class OrderByLimitKOperator : public IOperator {
