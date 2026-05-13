@@ -1,11 +1,47 @@
 #include "utilities.h"
 
+#include <ctime>
 #include <regex>
 #include <cstring>
+#include <stdexcept>
 
 bool isInteger(const std::string& str) {
     std::regex integer_regex("^[+-]?\\d+$");
     return std::regex_match(str, integer_regex);
+}
+
+bool isDateTime(const std::string& str) {
+    std::regex datetime_regex("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$");
+    return std::regex_match(str, datetime_regex);
+}
+
+uint32_t ParseDateTime(const std::string& str) {
+    if (!isDateTime(str)) {
+        throw std::runtime_error("Invalid datetime string: " + str);
+    }
+    std::tm tm = {};
+    tm.tm_year = std::stoi(str.substr(0, 4)) - 1900;
+    tm.tm_mon = std::stoi(str.substr(5, 2)) - 1;
+    tm.tm_mday = std::stoi(str.substr(8, 2));
+    tm.tm_hour = std::stoi(str.substr(11, 2));
+    tm.tm_min = std::stoi(str.substr(14, 2));
+    tm.tm_sec = std::stoi(str.substr(17, 2));
+    tm.tm_isdst = -1;
+    std::time_t timestamp = std::mktime(&tm);
+    if (timestamp < 0) {
+        throw std::runtime_error("Cannot parse datetime string: " + str);
+    }
+    return static_cast<uint32_t>(timestamp);
+}
+
+std::string FormatDateTime(uint32_t value) {
+    std::time_t timestamp = static_cast<std::time_t>(value);
+    std::tm tm = *std::localtime(&timestamp);
+    char buffer[20];
+    if (std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm) == 0) {
+        throw std::runtime_error("Cannot format datetime value.");
+    }
+    return buffer;
 }
 
 void WriteNum(int64_t num, std::ostream& output) {

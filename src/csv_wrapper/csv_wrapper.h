@@ -10,6 +10,7 @@
 #include <string>
 #include <filesystem>
 #include <variant>
+#include <optional>
 
 class CSVWrapper {
 public:
@@ -23,7 +24,7 @@ public:
     void Close();
     size_t GetColumnNum() const;
     int64_t GetCurrRowSize() const;
-    void SetScheme(Scheme& scheme);
+    void SetScheme(Scheme& scheme, std::optional<std::vector<int64_t>> types = std::nullopt);
     ~CSVWrapper();
 
 

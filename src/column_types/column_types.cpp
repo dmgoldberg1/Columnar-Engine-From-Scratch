@@ -37,6 +37,242 @@ std::string CellToString(const CellTypes& value) {
 
 }  // namespace
 
+void Int16::Write(std::ostream& output) {
+    output.write(reinterpret_cast<const char*>(value_.data()), sizeof(int16_t) * value_.size());
+}
+
+void Int16::AddCell(const std::string& cell) {
+    try {
+        value_.push_back(static_cast<int16_t>(std::stoi(cell)));
+    } catch (...) {
+        value_.push_back(0);
+    }
+}
+
+void Int16::AddCell(const CellTypes& cell) {
+    value_.push_back(static_cast<int16_t>(std::get<int64_t>(cell)));
+}
+
+void Int16::AddColumn(const std::vector<std::string>& col) {
+    for (const auto& cell : col) {
+        AddCell(cell);
+    }
+}
+
+size_t Int16::GetColumnByteSize() const {
+    return value_.size() * sizeof(int16_t);
+}
+
+std::vector<std::string> Int16::GetColumnAsString() const {
+    std::vector<std::string> result;
+    result.reserve(value_.size());
+    for (int16_t value : value_) {
+        result.push_back(std::to_string(value));
+    }
+    return result;
+}
+
+int64_t Int16::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return mask.size();
+}
+
+CellTypes Int16::GetMin() const {
+    return static_cast<int64_t>(*std::min_element(value_.begin(), value_.end()));
+}
+
+CellTypes Int16::GetMin(const std::vector<uint64_t>& mask) const {
+    int16_t ans = std::numeric_limits<int16_t>::max();
+    for (auto id : mask) {
+        ans = std::min(ans, value_[id]);
+    }
+    return static_cast<int64_t>(ans);
+}
+
+CellTypes Int16::GetMax() const {
+    return static_cast<int64_t>(*std::max_element(value_.begin(), value_.end()));
+}
+
+CellTypes Int16::GetMax(const std::vector<uint64_t>& mask) const {
+    int16_t ans = std::numeric_limits<int16_t>::min();
+    for (auto id : mask) {
+        ans = std::max(ans, value_[id]);
+    }
+    return static_cast<int64_t>(ans);
+}
+
+bool Int16::Compare(int row, Op op, CellTypes value) const {
+    int16_t lhs = value_.at(row);
+    int16_t rhs = static_cast<int16_t>(std::get<int64_t>(value));
+    switch (op) {
+        case Op::EQ: return lhs == rhs;
+        case Op::NE: return lhs != rhs;
+        case Op::LT: return lhs < rhs;
+        case Op::LE: return lhs <= rhs;
+        case Op::GT: return lhs > rhs;
+        case Op::GE: return lhs >= rhs;
+    }
+    return false;
+}
+
+void Int16::MergeHashes(
+    std::vector<uint64_t>& hashes,
+    std::vector<std::vector<std::string>>& group_name,
+    const std::function<CellTypes(const CellTypes&)>& transform
+) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        CellTypes current = transform ? transform(CellTypes(static_cast<int64_t>(value_[i]))) : CellTypes(static_cast<int64_t>(value_[i]));
+        hashes[i] = HashCombine(hashes[i], HashCell(current));
+        if (!group_name.empty()) {
+            group_name[i].push_back(CellToString(current));
+        }
+    }
+}
+
+void Int16::FillHashSet(std::unordered_set<int64_t>& set) const {
+    for (int16_t value : value_) {
+        set.insert(static_cast<int64_t>(value));
+    }
+}
+
+void Int16::FillHashSet(std::unordered_set<int64_t>& set, const std::vector<uint64_t>& mask) const {
+    for (uint64_t id : mask) {
+        set.insert(static_cast<int64_t>(value_[id]));
+    }
+}
+
+void Int16::FilterRows(const std::vector<int64_t>& mask) {
+    std::vector<int16_t> new_values;
+    new_values.reserve(mask.size());
+    for (int64_t id : mask) {
+        new_values.push_back(value_[id]);
+    }
+    value_ = std::move(new_values);
+}
+
+void Int16::SetData(const std::vector<uint8_t>& data) {
+    int64_t count = data.size() / sizeof(int16_t);
+    value_.resize(count);
+    std::memcpy(value_.data(), data.data(), data.size());
+}
+
+void Int32::Write(std::ostream& output) {
+    output.write(reinterpret_cast<const char*>(value_.data()), sizeof(int32_t) * value_.size());
+}
+
+void Int32::AddCell(const std::string& cell) {
+    try {
+        value_.push_back(static_cast<int32_t>(std::stol(cell)));
+    } catch (...) {
+        value_.push_back(0);
+    }
+}
+
+void Int32::AddCell(const CellTypes& cell) {
+    value_.push_back(static_cast<int32_t>(std::get<int64_t>(cell)));
+}
+
+void Int32::AddColumn(const std::vector<std::string>& col) {
+    for (const auto& cell : col) {
+        AddCell(cell);
+    }
+}
+
+size_t Int32::GetColumnByteSize() const {
+    return value_.size() * sizeof(int32_t);
+}
+
+std::vector<std::string> Int32::GetColumnAsString() const {
+    std::vector<std::string> result;
+    result.reserve(value_.size());
+    for (int32_t value : value_) {
+        result.push_back(std::to_string(value));
+    }
+    return result;
+}
+
+int64_t Int32::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return mask.size();
+}
+
+CellTypes Int32::GetMin() const {
+    return static_cast<int64_t>(*std::min_element(value_.begin(), value_.end()));
+}
+
+CellTypes Int32::GetMin(const std::vector<uint64_t>& mask) const {
+    int32_t ans = std::numeric_limits<int32_t>::max();
+    for (auto id : mask) {
+        ans = std::min(ans, value_[id]);
+    }
+    return static_cast<int64_t>(ans);
+}
+
+CellTypes Int32::GetMax() const {
+    return static_cast<int64_t>(*std::max_element(value_.begin(), value_.end()));
+}
+
+CellTypes Int32::GetMax(const std::vector<uint64_t>& mask) const {
+    int32_t ans = std::numeric_limits<int32_t>::min();
+    for (auto id : mask) {
+        ans = std::max(ans, value_[id]);
+    }
+    return static_cast<int64_t>(ans);
+}
+
+bool Int32::Compare(int row, Op op, CellTypes value) const {
+    int32_t lhs = value_.at(row);
+    int32_t rhs = static_cast<int32_t>(std::get<int64_t>(value));
+    switch (op) {
+        case Op::EQ: return lhs == rhs;
+        case Op::NE: return lhs != rhs;
+        case Op::LT: return lhs < rhs;
+        case Op::LE: return lhs <= rhs;
+        case Op::GT: return lhs > rhs;
+        case Op::GE: return lhs >= rhs;
+    }
+    return false;
+}
+
+void Int32::MergeHashes(
+    std::vector<uint64_t>& hashes,
+    std::vector<std::vector<std::string>>& group_name,
+    const std::function<CellTypes(const CellTypes&)>& transform
+) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        CellTypes current = transform ? transform(CellTypes(static_cast<int64_t>(value_[i]))) : CellTypes(static_cast<int64_t>(value_[i]));
+        hashes[i] = HashCombine(hashes[i], HashCell(current));
+        if (!group_name.empty()) {
+            group_name[i].push_back(CellToString(current));
+        }
+    }
+}
+
+void Int32::FillHashSet(std::unordered_set<int64_t>& set) const {
+    for (int32_t value : value_) {
+        set.insert(static_cast<int64_t>(value));
+    }
+}
+
+void Int32::FillHashSet(std::unordered_set<int64_t>& set, const std::vector<uint64_t>& mask) const {
+    for (uint64_t id : mask) {
+        set.insert(static_cast<int64_t>(value_[id]));
+    }
+}
+
+void Int32::FilterRows(const std::vector<int64_t>& mask) {
+    std::vector<int32_t> new_values;
+    new_values.reserve(mask.size());
+    for (int64_t id : mask) {
+        new_values.push_back(value_[id]);
+    }
+    value_ = std::move(new_values);
+}
+
+void Int32::SetData(const std::vector<uint8_t>& data) {
+    int64_t count = data.size() / sizeof(int32_t);
+    value_.resize(count);
+    std::memcpy(value_.data(), data.data(), data.size());
+}
+
 void Int64::Write(std::ostream& output) {
     output.write(reinterpret_cast<const char*>(value_.data()), sizeof(int64_t) * value_.size());
 }
@@ -617,4 +853,272 @@ void Double::MergeHashes(
             group_name[i].push_back(CellToString(current));
         }
     }
+}
+
+void DateTime::Write(std::ostream& output) {
+    output.write(reinterpret_cast<const char*>(value_.data()), sizeof(uint32_t) * value_.size());
+}
+
+void DateTime::AddCell(const std::string& cell) {
+    try {
+        value_.push_back(ParseDateTime(cell));
+    } catch (...) {
+        value_.push_back(0);
+    }
+}
+
+void DateTime::AddCell(const CellTypes& cell) {
+    if (std::holds_alternative<std::string>(cell)) {
+        AddCell(std::get<std::string>(cell));
+        return;
+    }
+    value_.push_back(static_cast<uint32_t>(std::get<int64_t>(cell)));
+}
+
+void DateTime::AddColumn(const std::vector<std::string>& col) {
+    for (const auto& cell : col) {
+        AddCell(cell);
+    }
+}
+
+size_t DateTime::GetColumnByteSize() const {
+    return value_.size() * sizeof(uint32_t);
+}
+
+std::string DateTime::GetCellAsString(int64_t i) const {
+    return FormatDateTime(value_[i]);
+}
+
+std::vector<std::string> DateTime::GetColumnAsString() const {
+    std::vector<std::string> result;
+    result.reserve(value_.size());
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        result.push_back(GetCellAsString(i));
+    }
+    return result;
+}
+
+int64_t DateTime::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return mask.size();
+}
+
+CellTypes DateTime::GetMin() const {
+    auto it = std::min_element(value_.begin(), value_.end());
+    return FormatDateTime(*it);
+}
+
+CellTypes DateTime::GetMin(const std::vector<uint64_t>& mask) const {
+    uint32_t ans = std::numeric_limits<uint32_t>::max();
+    for (auto id : mask) {
+        ans = std::min(ans, value_[id]);
+    }
+    return FormatDateTime(ans);
+}
+
+CellTypes DateTime::GetMax() const {
+    auto it = std::max_element(value_.begin(), value_.end());
+    return FormatDateTime(*it);
+}
+
+CellTypes DateTime::GetMax(const std::vector<uint64_t>& mask) const {
+    uint32_t ans = std::numeric_limits<uint32_t>::min();
+    for (auto id : mask) {
+        ans = std::max(ans, value_[id]);
+    }
+    return FormatDateTime(ans);
+}
+
+bool DateTime::Compare(int row, Op op, CellTypes val) const {
+    uint32_t lhs = value_.at(row);
+    uint32_t rhs = 0;
+    if (std::holds_alternative<std::string>(val)) {
+        rhs = ParseDateTime(std::get<std::string>(val));
+    } else {
+        rhs = static_cast<uint32_t>(std::get<int64_t>(val));
+    }
+    switch (op) {
+        case Op::EQ:
+            return lhs == rhs;
+        case Op::NE:
+            return lhs != rhs;
+        case Op::LT:
+            return lhs < rhs;
+        case Op::LE:
+            return lhs <= rhs;
+        case Op::GT:
+            return lhs > rhs;
+        case Op::GE:
+            return lhs >= rhs;
+    }
+    return false;
+}
+
+void DateTime::MergeHashes(
+    std::vector<uint64_t>& hashes,
+    std::vector<std::vector<std::string>>& group_name,
+    const std::function<CellTypes(const CellTypes&)>& transform
+) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        CellTypes source = GetCellAsString(i);
+        CellTypes current = transform ? transform(source) : source;
+        hashes[i] = HashCombine(hashes[i], HashCell(current));
+        if (!group_name.empty()) {
+            group_name[i].push_back(CellToString(current));
+        }
+    }
+}
+
+void DateTime::FilterRows(const std::vector<int64_t>& mask) {
+    std::vector<uint32_t> new_values;
+    new_values.reserve(mask.size());
+    for (int64_t id : mask) {
+        new_values.push_back(value_[id]);
+    }
+    value_ = std::move(new_values);
+}
+
+void DateTime::SetData(const std::vector<uint8_t>& data) {
+    int64_t count = data.size() / sizeof(uint32_t);
+    value_.resize(count);
+    std::memcpy(value_.data(), data.data(), data.size());
+}
+
+void Timestamp::Write(std::ostream& output) {
+    output.write(reinterpret_cast<const char*>(value_.data()), sizeof(uint32_t) * value_.size());
+}
+
+void Timestamp::AddCell(const std::string& cell) {
+    try {
+        value_.push_back(static_cast<uint32_t>(std::stoul(cell)));
+    } catch (...) {
+        value_.push_back(0);
+    }
+}
+
+void Timestamp::AddCell(const CellTypes& cell) {
+    if (std::holds_alternative<std::string>(cell)) {
+        AddCell(std::get<std::string>(cell));
+        return;
+    }
+    value_.push_back(static_cast<uint32_t>(std::get<int64_t>(cell)));
+}
+
+void Timestamp::AddColumn(const std::vector<std::string>& col) {
+    for (const auto& cell : col) {
+        AddCell(cell);
+    }
+}
+
+size_t Timestamp::GetColumnByteSize() const {
+    return value_.size() * sizeof(uint32_t);
+}
+
+std::string Timestamp::GetCellAsString(int64_t i) const {
+    return std::to_string(value_[i]);
+}
+
+std::vector<std::string> Timestamp::GetColumnAsString() const {
+    std::vector<std::string> result;
+    result.reserve(value_.size());
+    for (uint32_t value : value_) {
+        result.push_back(std::to_string(value));
+    }
+    return result;
+}
+
+int64_t Timestamp::GetRowCount(const std::vector<uint64_t>& mask) const {
+    return mask.size();
+}
+
+CellTypes Timestamp::GetMin() const {
+    auto it = std::min_element(value_.begin(), value_.end());
+    return static_cast<int64_t>(*it);
+}
+
+CellTypes Timestamp::GetMin(const std::vector<uint64_t>& mask) const {
+    uint32_t ans = std::numeric_limits<uint32_t>::max();
+    for (auto id : mask) {
+        ans = std::min(ans, value_[id]);
+    }
+    return static_cast<int64_t>(ans);
+}
+
+CellTypes Timestamp::GetMax() const {
+    auto it = std::max_element(value_.begin(), value_.end());
+    return static_cast<int64_t>(*it);
+}
+
+CellTypes Timestamp::GetMax(const std::vector<uint64_t>& mask) const {
+    uint32_t ans = std::numeric_limits<uint32_t>::min();
+    for (auto id : mask) {
+        ans = std::max(ans, value_[id]);
+    }
+    return static_cast<int64_t>(ans);
+}
+
+bool Timestamp::Compare(int row, Op op, CellTypes val) const {
+    uint32_t lhs = value_.at(row);
+    uint32_t rhs = 0;
+    if (std::holds_alternative<std::string>(val)) {
+        rhs = static_cast<uint32_t>(std::stoul(std::get<std::string>(val)));
+    } else {
+        rhs = static_cast<uint32_t>(std::get<int64_t>(val));
+    }
+    switch (op) {
+        case Op::EQ:
+            return lhs == rhs;
+        case Op::NE:
+            return lhs != rhs;
+        case Op::LT:
+            return lhs < rhs;
+        case Op::LE:
+            return lhs <= rhs;
+        case Op::GT:
+            return lhs > rhs;
+        case Op::GE:
+            return lhs >= rhs;
+    }
+    return false;
+}
+
+void Timestamp::MergeHashes(
+    std::vector<uint64_t>& hashes,
+    std::vector<std::vector<std::string>>& group_name,
+    const std::function<CellTypes(const CellTypes&)>& transform
+) const {
+    for (int64_t i = 0; i < value_.size(); ++i) {
+        CellTypes source = static_cast<int64_t>(value_[i]);
+        CellTypes current = transform ? transform(source) : source;
+        hashes[i] = HashCombine(hashes[i], HashCell(current));
+        if (!group_name.empty()) {
+            group_name[i].push_back(CellToString(current));
+        }
+    }
+}
+
+void Timestamp::FillHashSet(std::unordered_set<int64_t>& set) const {
+    for (uint32_t value : value_) {
+        set.insert(static_cast<int64_t>(value));
+    }
+}
+
+void Timestamp::FillHashSet(std::unordered_set<int64_t>& set, const std::vector<uint64_t>& mask) const {
+    for (uint64_t id : mask) {
+        set.insert(static_cast<int64_t>(value_[id]));
+    }
+}
+
+void Timestamp::FilterRows(const std::vector<int64_t>& mask) {
+    std::vector<uint32_t> new_values;
+    new_values.reserve(mask.size());
+    for (int64_t id : mask) {
+        new_values.push_back(value_[id]);
+    }
+    value_ = std::move(new_values);
+}
+
+void Timestamp::SetData(const std::vector<uint8_t>& data) {
+    int64_t count = data.size() / sizeof(uint32_t);
+    value_.resize(count);
+    std::memcpy(value_.data(), data.data(), data.size());
 }

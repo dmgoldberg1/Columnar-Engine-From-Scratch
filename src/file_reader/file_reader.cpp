@@ -1,5 +1,7 @@
 #include "file_reader.h"
 
+#include "../utilities/utilities.h"
+
 #include <vector>
 #include <stdexcept>
 #include <cstring>
@@ -100,11 +102,26 @@ protected:
         row_group_.clear();
         for (int64_t curr_type : metadata_.GetTypesInfo()) {
             switch (curr_type) {
-                case 1:
+                case static_cast<int64_t>(Types::TypeInt16):
+                    row_group_.push_back(std::make_unique<Int16>());
+                    break;
+                case static_cast<int64_t>(Types::TypeInt32):
+                    row_group_.push_back(std::make_unique<Int32>());
+                    break;
+                case static_cast<int64_t>(Types::TypeInt64):
                     row_group_.push_back(std::make_unique<Int64>());
                     break;
-                case 2:
+                case static_cast<int64_t>(Types::TypeString):
                     row_group_.push_back(std::make_unique<String>());
+                    break;
+                case static_cast<int64_t>(Types::TypeDouble):
+                    row_group_.push_back(std::make_unique<Double>());
+                    break;
+                case static_cast<int64_t>(Types::TypeDateTime):
+                    row_group_.push_back(std::make_unique<DateTime>());
+                    break;
+                case static_cast<int64_t>(Types::TypeTimestamp):
+                    row_group_.push_back(std::make_unique<Timestamp>());
                     break;
                 default:
                     break;

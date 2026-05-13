@@ -20,6 +20,13 @@ void EnsureTransformsSize(size_t expected_size, std::vector<AggregationTransform
     }
 }
 
+bool IsIntegralType(int64_t type) {
+    return type == static_cast<int64_t>(Types::TypeInt16) ||
+           type == static_cast<int64_t>(Types::TypeInt32) ||
+           type == static_cast<int64_t>(Types::TypeInt64) ||
+           type == static_cast<int64_t>(Types::TypeTimestamp);
+}
+
 int64_t GetEffectiveType(int64_t source_type, const AggregationTransform& transform) {
     if (!transform.HasValue()) {
         return source_type;
@@ -62,12 +69,12 @@ std::vector<std::string> BuildGroupKeyNames(
 std::unique_ptr<IAccumulator> CreateAccumulator(GlobalAggregationOperator::Op op, int64_t effective_type, const AggregationTransform& transform) {
     switch (op) {
         case GlobalAggregationOperator::Op::SUM:
-            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+            if (IsIntegralType(effective_type)) {
                 return std::make_unique<SumIntAccumulator>(transform);
             }
             return std::make_unique<SumFloatAccumulator>(transform);
         case GlobalAggregationOperator::Op::AVG:
-            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+            if (IsIntegralType(effective_type)) {
                 return std::make_unique<AvgAccumulator>(std::make_unique<SumIntAccumulator>(transform));
             }
             return std::make_unique<AvgAccumulator>(std::make_unique<SumFloatAccumulator>(transform));
@@ -78,7 +85,7 @@ std::unique_ptr<IAccumulator> CreateAccumulator(GlobalAggregationOperator::Op op
         case GlobalAggregationOperator::Op::COUNT:
             return std::make_unique<CountAccumulator>();
         case GlobalAggregationOperator::Op::CountDistinct:
-            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+            if (IsIntegralType(effective_type)) {
                 return std::make_unique<CountDistinctIntAccumulator>();
             }
             return std::make_unique<CountDistinctStringAccumulator>();
@@ -89,9 +96,18 @@ std::unique_ptr<IAccumulator> CreateAccumulator(GlobalAggregationOperator::Op op
 void AddResultColumn(Batch& batch, std::vector<int64_t>& curr_types, GlobalAggregationOperator::Op op, int64_t effective_type) {
     switch (op) {
         case GlobalAggregationOperator::Op::SUM:
-            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+            if (effective_type == static_cast<int64_t>(Types::TypeInt16)) {
+                batch.push_back(std::make_unique<Int16>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeInt16));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeInt32)) {
+                batch.push_back(std::make_unique<Int32>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeInt32));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
                 batch.push_back(std::make_unique<Int64>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeInt64));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeTimestamp)) {
+                batch.push_back(std::make_unique<Timestamp>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeTimestamp));
             } else {
                 batch.push_back(std::make_unique<Double>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeDouble));
@@ -103,12 +119,24 @@ void AddResultColumn(Batch& batch, std::vector<int64_t>& curr_types, GlobalAggre
             return;
         case GlobalAggregationOperator::Op::MIN:
         case GlobalAggregationOperator::Op::MAX:
-            if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
+            if (effective_type == static_cast<int64_t>(Types::TypeInt16)) {
+                batch.push_back(std::make_unique<Int16>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeInt16));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeInt32)) {
+                batch.push_back(std::make_unique<Int32>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeInt32));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeInt64)) {
                 batch.push_back(std::make_unique<Int64>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeInt64));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeTimestamp)) {
+                batch.push_back(std::make_unique<Timestamp>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeTimestamp));
             } else if (effective_type == static_cast<int64_t>(Types::TypeDouble)) {
                 batch.push_back(std::make_unique<Double>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeDouble));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeDateTime)) {
+                batch.push_back(std::make_unique<DateTime>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeDateTime));
             } else {
                 batch.push_back(std::make_unique<String>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeString));
@@ -335,13 +363,43 @@ void MaxAccumulator::Update(const Column* column, const std::vector<uint64_t>& m
 }
 
 void CountDistinctIntAccumulator::Update(const Column* column) {
-    const auto* col = static_cast<const Int64*>(column);
-    col->FillHashSet(set_);
+    if (const auto* col = dynamic_cast<const Int16*>(column)) {
+        col->FillHashSet(set_);
+        return;
+    }
+    if (const auto* col = dynamic_cast<const Int32*>(column)) {
+        col->FillHashSet(set_);
+        return;
+    }
+    if (const auto* col = dynamic_cast<const Int64*>(column)) {
+        col->FillHashSet(set_);
+        return;
+    }
+    if (const auto* col = dynamic_cast<const Timestamp*>(column)) {
+        col->FillHashSet(set_);
+        return;
+    }
+    throw std::runtime_error("CountDistinctIntAccumulator expects an integral column.");
 }
 
 void CountDistinctIntAccumulator::Update(const Column* column, const std::vector<uint64_t>& mask) {
-    const auto* col = static_cast<const Int64*>(column);
-    col->FillHashSet(set_, mask);
+    if (const auto* col = dynamic_cast<const Int16*>(column)) {
+        col->FillHashSet(set_, mask);
+        return;
+    }
+    if (const auto* col = dynamic_cast<const Int32*>(column)) {
+        col->FillHashSet(set_, mask);
+        return;
+    }
+    if (const auto* col = dynamic_cast<const Int64*>(column)) {
+        col->FillHashSet(set_, mask);
+        return;
+    }
+    if (const auto* col = dynamic_cast<const Timestamp*>(column)) {
+        col->FillHashSet(set_, mask);
+        return;
+    }
+    throw std::runtime_error("CountDistinctIntAccumulator expects an integral column.");
 }
 
 void CountDistinctStringAccumulator::Update(const Column* column) {
@@ -517,8 +575,16 @@ std::optional<Batch> OrderByLimitKOperator::Next() {
         if (!result_batch_.has_value()) {
             result_batch_ = std::vector<std::unique_ptr<Column>>();
             for (int64_t c : curr_ids) {
-                if (dynamic_cast<const Int64*>(batch.value()[c].get()) != nullptr) {
+                if (dynamic_cast<const Int16*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Int16>());
+                } else if (dynamic_cast<const Int32*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Int32>());
+                } else if (dynamic_cast<const Int64*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<Int64>());
+                } else if (dynamic_cast<const DateTime*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<DateTime>());
+                } else if (dynamic_cast<const Timestamp*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Timestamp>());
                 } else if (dynamic_cast<const String*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<String>());
                 } else if (dynamic_cast<const Double*>(batch.value()[c].get()) != nullptr) {
@@ -573,8 +639,16 @@ std::optional<Batch> OrderByOperator::Next() {
         if (!result_batch_.has_value()) {
             result_batch_ = std::vector<std::unique_ptr<Column>>();
             for (int64_t c : curr_ids) {
-                if (dynamic_cast<const Int64*>(batch.value()[c].get()) != nullptr) {
+                if (dynamic_cast<const Int16*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Int16>());
+                } else if (dynamic_cast<const Int32*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Int32>());
+                } else if (dynamic_cast<const Int64*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<Int64>());
+                } else if (dynamic_cast<const DateTime*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<DateTime>());
+                } else if (dynamic_cast<const Timestamp*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Timestamp>());
                 } else if (dynamic_cast<const String*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<String>());
                 } else if (dynamic_cast<const Double*>(batch.value()[c].get()) != nullptr) {

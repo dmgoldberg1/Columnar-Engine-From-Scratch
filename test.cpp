@@ -49,7 +49,7 @@ void GenerateCsv() {
     std::uniform_int_distribution<int> num_dist(0, 10000);
     std::uniform_int_distribution<char> char_dist('a', 'z');
     int64_t rows = 7200000;
-    file << "Name,Age,City\n";
+    file << "Name,NameText,Age,AgeText,City,CityText\n";
      for (int i = 0; i < rows; i++) {
         for (int col = 0; col < 3; col++) {
             file << num_dist(gen);
@@ -593,4 +593,3 @@ TEST(OrderByOperatorTest, BasicTest) {
     std::remove(input_csv_file);
     std::remove(input_db_file);
 }
-

@@ -50,16 +50,32 @@ public:
         return record;
     }
 
-    void SetScheme(Scheme& scheme) {
+    void SetScheme(Scheme& scheme, std::optional<std::vector<int64_t>> types) {
         std::vector<std::string> col_names = GetNextLineAndSplitIntoTokens();
         for (const auto& name : col_names) {
             scheme.AddColumnName(name);
         }
         int64_t start_pos = input_.tellg();
         std::vector<std::string> first_row = GetNextLineAndSplitIntoTokens();
-        column_num_ = first_row.size();
-        for (const auto& cell : first_row) {
-            if (isInteger(cell)) {
+        column_num_ = col_names.size();
+        if (types.has_value()) {
+            if (types->size() != col_names.size()) {
+                throw std::runtime_error("Explicit type count must match column count.");
+            }
+            for (int64_t type : *types) {
+                scheme.AddColumnType(type);
+            }
+            input_.seekg(start_pos, std::ios::beg);
+            return;
+        }
+        for (size_t i = 0; i < col_names.size(); ++i) {
+            const std::string& cell = i < first_row.size() ? first_row[i] : std::string();
+            const std::string& name = col_names[i];
+            if (isDateTime(cell)) {
+                scheme.AddColumnType(static_cast<int64_t>(Types::TypeDateTime));
+            } else if (name.find("Timestamp") != std::string::npos && isInteger(cell)) {
+                scheme.AddColumnType(static_cast<int64_t>(Types::TypeTimestamp));
+            } else if (isInteger(cell)) {
                 scheme.AddColumnType(static_cast<int64_t>(Types::TypeInt64));
             } else {
                 scheme.AddColumnType(static_cast<int64_t>(Types::TypeString));
@@ -104,8 +120,8 @@ std::vector<std::string> CSVWrapper::GetNextLineAndSplitIntoTokens() {
     return impl_->GetNextLineAndSplitIntoTokens();
 }
 
-void CSVWrapper::SetScheme(Scheme& scheme) {
-    impl_->SetScheme(scheme);
+void CSVWrapper::SetScheme(Scheme& scheme, std::optional<std::vector<int64_t>> types) {
+    impl_->SetScheme(scheme, std::move(types));
 }
 
 bool CSVWrapper::IsEnd() const {
