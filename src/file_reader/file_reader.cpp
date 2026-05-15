@@ -117,8 +117,8 @@ protected:
                 case static_cast<int64_t>(Types::TypeDouble):
                     row_group_.push_back(std::make_unique<Double>());
                     break;
-                case static_cast<int64_t>(Types::TypeDateTime):
-                    row_group_.push_back(std::make_unique<DateTime>());
+                case static_cast<int64_t>(Types::TypeDate):
+                    row_group_.push_back(std::make_unique<Date>());
                     break;
                 case static_cast<int64_t>(Types::TypeTimestamp):
                     row_group_.push_back(std::make_unique<Timestamp>());

@@ -46,6 +46,133 @@ std::string TruncateToMinute(const std::string& event_time) {
     return event_time.substr(0, 16) + ":00";
 }
 
+std::vector<int64_t> GetHitsColumnTypes() {
+    return {
+        static_cast<int64_t>(Types::TypeInt64),     // WatchID
+        static_cast<int64_t>(Types::TypeInt16),     // JavaEnable
+        static_cast<int64_t>(Types::TypeString),    // Title
+        static_cast<int64_t>(Types::TypeInt16),     // GoodEvent
+        static_cast<int64_t>(Types::TypeTimestamp), // EventTime
+        static_cast<int64_t>(Types::TypeDate),      // EventDate
+        static_cast<int64_t>(Types::TypeInt32),     // CounterID
+        static_cast<int64_t>(Types::TypeInt32),     // ClientIP
+        static_cast<int64_t>(Types::TypeInt32),     // RegionID
+        static_cast<int64_t>(Types::TypeInt64),     // UserID
+        static_cast<int64_t>(Types::TypeInt16),     // CounterClass
+        static_cast<int64_t>(Types::TypeInt16),     // OS
+        static_cast<int64_t>(Types::TypeInt16),     // UserAgent
+        static_cast<int64_t>(Types::TypeString),    // URL
+        static_cast<int64_t>(Types::TypeString),    // Referer
+        static_cast<int64_t>(Types::TypeInt16),     // IsRefresh
+        static_cast<int64_t>(Types::TypeInt16),     // RefererCategoryID
+        static_cast<int64_t>(Types::TypeInt32),     // RefererRegionID
+        static_cast<int64_t>(Types::TypeInt16),     // URLCategoryID
+        static_cast<int64_t>(Types::TypeInt32),     // URLRegionID
+        static_cast<int64_t>(Types::TypeInt16),     // ResolutionWidth
+        static_cast<int64_t>(Types::TypeInt16),     // ResolutionHeight
+        static_cast<int64_t>(Types::TypeInt16),     // ResolutionDepth
+        static_cast<int64_t>(Types::TypeInt16),     // FlashMajor
+        static_cast<int64_t>(Types::TypeInt16),     // FlashMinor
+        static_cast<int64_t>(Types::TypeString),    // FlashMinor2
+        static_cast<int64_t>(Types::TypeInt16),     // NetMajor
+        static_cast<int64_t>(Types::TypeInt16),     // NetMinor
+        static_cast<int64_t>(Types::TypeInt16),     // UserAgentMajor
+        static_cast<int64_t>(Types::TypeString),    // UserAgentMinor
+        static_cast<int64_t>(Types::TypeInt16),     // CookieEnable
+        static_cast<int64_t>(Types::TypeInt16),     // JavascriptEnable
+        static_cast<int64_t>(Types::TypeInt16),     // IsMobile
+        static_cast<int64_t>(Types::TypeInt16),     // MobilePhone
+        static_cast<int64_t>(Types::TypeString),    // MobilePhoneModel
+        static_cast<int64_t>(Types::TypeString),    // Params
+        static_cast<int64_t>(Types::TypeInt32),     // IPNetworkID
+        static_cast<int64_t>(Types::TypeInt16),     // TraficSourceID
+        static_cast<int64_t>(Types::TypeInt16),     // SearchEngineID
+        static_cast<int64_t>(Types::TypeString),    // SearchPhrase
+        static_cast<int64_t>(Types::TypeInt16),     // AdvEngineID
+        static_cast<int64_t>(Types::TypeInt16),     // IsArtifical
+        static_cast<int64_t>(Types::TypeInt16),     // WindowClientWidth
+        static_cast<int64_t>(Types::TypeInt16),     // WindowClientHeight
+        static_cast<int64_t>(Types::TypeInt16),     // ClientTimeZone
+        static_cast<int64_t>(Types::TypeTimestamp), // ClientEventTime
+        static_cast<int64_t>(Types::TypeInt16),     // SilverlightVersion1
+        static_cast<int64_t>(Types::TypeInt16),     // SilverlightVersion2
+        static_cast<int64_t>(Types::TypeInt32),     // SilverlightVersion3
+        static_cast<int64_t>(Types::TypeInt16),     // SilverlightVersion4
+        static_cast<int64_t>(Types::TypeString),    // PageCharset
+        static_cast<int64_t>(Types::TypeInt32),     // CodeVersion
+        static_cast<int64_t>(Types::TypeInt16),     // IsLink
+        static_cast<int64_t>(Types::TypeInt16),     // IsDownload
+        static_cast<int64_t>(Types::TypeInt16),     // IsNotBounce
+        static_cast<int64_t>(Types::TypeInt64),     // FUniqID
+        static_cast<int64_t>(Types::TypeString),    // OriginalURL
+        static_cast<int64_t>(Types::TypeInt32),     // HID
+        static_cast<int64_t>(Types::TypeInt16),     // IsOldCounter
+        static_cast<int64_t>(Types::TypeInt16),     // IsEvent
+        static_cast<int64_t>(Types::TypeInt16),     // IsParameter
+        static_cast<int64_t>(Types::TypeInt16),     // DontCountHits
+        static_cast<int64_t>(Types::TypeInt16),     // WithHash
+        static_cast<int64_t>(Types::TypeString),    // HitColor
+        static_cast<int64_t>(Types::TypeTimestamp), // LocalEventTime
+        static_cast<int64_t>(Types::TypeInt16),     // Age
+        static_cast<int64_t>(Types::TypeInt16),     // Sex
+        static_cast<int64_t>(Types::TypeInt16),     // Income
+        static_cast<int64_t>(Types::TypeInt16),     // Interests
+        static_cast<int64_t>(Types::TypeInt16),     // Robotness
+        static_cast<int64_t>(Types::TypeInt32),     // RemoteIP
+        static_cast<int64_t>(Types::TypeInt32),     // WindowName
+        static_cast<int64_t>(Types::TypeInt32),     // OpenerName
+        static_cast<int64_t>(Types::TypeInt16),     // HistoryLength
+        static_cast<int64_t>(Types::TypeString),    // BrowserLanguage
+        static_cast<int64_t>(Types::TypeString),    // BrowserCountry
+        static_cast<int64_t>(Types::TypeString),    // SocialNetwork
+        static_cast<int64_t>(Types::TypeString),    // SocialAction
+        static_cast<int64_t>(Types::TypeInt16),     // HTTPError
+        static_cast<int64_t>(Types::TypeInt32),     // SendTiming
+        static_cast<int64_t>(Types::TypeInt32),     // DNSTiming
+        static_cast<int64_t>(Types::TypeInt32),     // ConnectTiming
+        static_cast<int64_t>(Types::TypeInt32),     // ResponseStartTiming
+        static_cast<int64_t>(Types::TypeInt32),     // ResponseEndTiming
+        static_cast<int64_t>(Types::TypeInt32),     // FetchTiming
+        static_cast<int64_t>(Types::TypeInt16),     // SocialSourceNetworkID
+        static_cast<int64_t>(Types::TypeString),    // SocialSourcePage
+        static_cast<int64_t>(Types::TypeInt64),     // ParamPrice
+        static_cast<int64_t>(Types::TypeString),    // ParamOrderID
+        static_cast<int64_t>(Types::TypeString),    // ParamCurrency
+        static_cast<int64_t>(Types::TypeInt16),     // ParamCurrencyID
+        static_cast<int64_t>(Types::TypeString),    // OpenstatServiceName
+        static_cast<int64_t>(Types::TypeString),    // OpenstatCampaignID
+        static_cast<int64_t>(Types::TypeString),    // OpenstatAdID
+        static_cast<int64_t>(Types::TypeString),    // OpenstatSourceID
+        static_cast<int64_t>(Types::TypeString),    // UTMSource
+        static_cast<int64_t>(Types::TypeString),    // UTMMedium
+        static_cast<int64_t>(Types::TypeString),    // UTMCampaign
+        static_cast<int64_t>(Types::TypeString),    // UTMContent
+        static_cast<int64_t>(Types::TypeString),    // UTMTerm
+        static_cast<int64_t>(Types::TypeString),    // FromTag
+        static_cast<int64_t>(Types::TypeInt16),     // HasGCLID
+        static_cast<int64_t>(Types::TypeInt64),     // RefererHash
+        static_cast<int64_t>(Types::TypeInt64),     // URLHash
+        static_cast<int64_t>(Types::TypeInt32)      // CLID
+    };
+}
+
+TEST(ClickBenchQueriesTest, BuildHitsColumnarFile) {
+    const char* input_csv_file = "../hits_with_header.csv";
+    const char* output_file = "db_file_benchmark_test.egg";
+    ASSERT_TRUE(std::filesystem::exists(input_csv_file));
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(scheme, GetHitsColumnTypes());
+    std::ofstream output(output_file, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(output.is_open());
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.SetProgressLogging(true);
+    writer.WriteAll();
+    output.close();
+    ASSERT_TRUE(std::filesystem::exists(output_file));
+    ASSERT_GT(std::filesystem::file_size(output_file), 0);
+}
+
 TEST(ClickBenchQueriesTest, Query01CountAll) {
     const char* input_db_file = "db_file_benchmark.egg";
     Scheme scheme = GetDbScheme(input_db_file);

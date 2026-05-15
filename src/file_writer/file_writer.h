@@ -10,6 +10,7 @@
 class RowGroupWriter {
 public:
     RowGroupWriter(CSVWrapper&& reader, std::ostream& output, Scheme& scheme);
+    void SetProgressLogging(bool enabled);
     void WriteAll();
     ~RowGroupWriter();
 protected:

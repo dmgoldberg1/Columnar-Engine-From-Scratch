@@ -43,7 +43,7 @@ bool CompareCSVFiles(const std::string& file1, const std::string& file2) {
 }
 
 void GenerateCsv() {
-    std::ofstream file("test.csv");
+    std::ofstream file("big_test.csv");
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> num_dist(0, 10000);
@@ -68,6 +68,25 @@ void GenerateCsv() {
 
 std::vector<std::string> CreateStringVector(const std::initializer_list<std::string>& list) {
     return std::vector<std::string>(list);
+}
+
+std::vector<int64_t> GetSimpleCsvTypes() {
+    return {
+        static_cast<int64_t>(Types::TypeString),
+        static_cast<int64_t>(Types::TypeInt64),
+        static_cast<int64_t>(Types::TypeString)
+    };
+}
+
+std::vector<int64_t> GetGeneratedCsvTypes() {
+    return {
+        static_cast<int64_t>(Types::TypeInt64),
+        static_cast<int64_t>(Types::TypeString),
+        static_cast<int64_t>(Types::TypeInt64),
+        static_cast<int64_t>(Types::TypeString),
+        static_cast<int64_t>(Types::TypeInt64),
+        static_cast<int64_t>(Types::TypeString)
+    };
 }
 
 
@@ -120,7 +139,7 @@ TEST(RowGroupWriterTest, JustWorks) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -141,7 +160,7 @@ TEST(RowGroupWriterTest, JustWorks) {
 
 //     Scheme scheme;
 //     CSVWrapper parser(input_file);
-//     parser.SetScheme(scheme);
+//     parser.SetScheme(scheme, GetSimpleCsvTypes());
 //     std::ofstream output(output_file, std::ios::binary);
 //     RowGroupWriter writer(std::move(parser), output, scheme);
 //     EXPECT_THROW(writer.WriteAll(), std::runtime_error);
@@ -162,7 +181,7 @@ TEST(RowGroupReaderTest, SimpleTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -180,13 +199,19 @@ TEST(RowGroupReaderTest, SimpleTest) {
     std::remove(output_csv_file);
 }
 
-TEST(RowGroupReaderTest, BigFile) {
+TEST(RowGroupReaderTest, GenerateBigFileCsv) {
     GenerateCsv();
-    const char* input_csv_file = "test.csv";
+    ASSERT_TRUE(std::filesystem::exists("big_test.csv"));
+    ASSERT_GT(std::filesystem::file_size("big_test.csv"), 0);
+}
+
+TEST(RowGroupReaderTest, BigFile) {
+    const char* input_csv_file = "big_test.csv";
+    ASSERT_TRUE(std::filesystem::exists(input_csv_file));
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetGeneratedCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -197,8 +222,8 @@ TEST(RowGroupReaderTest, BigFile) {
     // const char* output_csv_file = "test_output.csv";
     // reader.ReadToCSV(output_csv_file);
     // EXPECT_TRUE(CompareCSVFiles(input_csv_file, output_csv_file));
-    std::remove(output_file);
-    std::remove(input_csv_file);
+    // std::remove(output_file);
+    // std::remove(input_csv_file);
     // std::remove(output_csv_file);
 }
 
@@ -213,7 +238,7 @@ TEST(BasicOperatorsTest, ScanOperatorTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -246,7 +271,7 @@ TEST(BasicOperatorsTest, CompareOperatorTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -285,7 +310,7 @@ TEST(BasicOperatorsTest, AndFilterOperatorTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -328,7 +353,7 @@ TEST(GlobalAggregationOperatorTest, Sum) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -360,7 +385,7 @@ TEST(GlobalAggregationOperatorTest, Max) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -392,7 +417,7 @@ TEST(GlobalAggregationOperatorTest, CountDistinct) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -423,7 +448,7 @@ TEST(GlobalAggregationOperatorTest, Avg) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -454,7 +479,7 @@ TEST(GlobalAggregationOperatorTest, ManyAggregations) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -490,7 +515,7 @@ TEST(GroupByAggregationOperatorTest, BasicTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -527,7 +552,7 @@ TEST(OrderByLimitKOperatorTest, BasicTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
@@ -567,7 +592,7 @@ TEST(OrderByOperatorTest, BasicTest) {
     const char* output_file = "db_file.egg";
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme);
+    parser.SetScheme(scheme, GetSimpleCsvTypes());
     std::ofstream output(output_file, std::ios::binary);
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();

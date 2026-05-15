@@ -134,9 +134,9 @@ void AddResultColumn(Batch& batch, std::vector<int64_t>& curr_types, GlobalAggre
             } else if (effective_type == static_cast<int64_t>(Types::TypeDouble)) {
                 batch.push_back(std::make_unique<Double>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeDouble));
-            } else if (effective_type == static_cast<int64_t>(Types::TypeDateTime)) {
-                batch.push_back(std::make_unique<DateTime>());
-                curr_types.push_back(static_cast<int64_t>(Types::TypeDateTime));
+            } else if (effective_type == static_cast<int64_t>(Types::TypeDate)) {
+                batch.push_back(std::make_unique<Date>());
+                curr_types.push_back(static_cast<int64_t>(Types::TypeDate));
             } else {
                 batch.push_back(std::make_unique<String>());
                 curr_types.push_back(static_cast<int64_t>(Types::TypeString));
@@ -581,8 +581,8 @@ std::optional<Batch> OrderByLimitKOperator::Next() {
                     result_batch_.value().push_back(std::make_unique<Int32>());
                 } else if (dynamic_cast<const Int64*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<Int64>());
-                } else if (dynamic_cast<const DateTime*>(batch.value()[c].get()) != nullptr) {
-                    result_batch_.value().push_back(std::make_unique<DateTime>());
+                } else if (dynamic_cast<const Date*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Date>());
                 } else if (dynamic_cast<const Timestamp*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<Timestamp>());
                 } else if (dynamic_cast<const String*>(batch.value()[c].get()) != nullptr) {
@@ -645,8 +645,8 @@ std::optional<Batch> OrderByOperator::Next() {
                     result_batch_.value().push_back(std::make_unique<Int32>());
                 } else if (dynamic_cast<const Int64*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<Int64>());
-                } else if (dynamic_cast<const DateTime*>(batch.value()[c].get()) != nullptr) {
-                    result_batch_.value().push_back(std::make_unique<DateTime>());
+                } else if (dynamic_cast<const Date*>(batch.value()[c].get()) != nullptr) {
+                    result_batch_.value().push_back(std::make_unique<Date>());
                 } else if (dynamic_cast<const Timestamp*>(batch.value()[c].get()) != nullptr) {
                     result_batch_.value().push_back(std::make_unique<Timestamp>());
                 } else if (dynamic_cast<const String*>(batch.value()[c].get()) != nullptr) {
