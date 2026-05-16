@@ -173,8 +173,8 @@ TEST(ClickBenchQueriesTest, BuildHitsColumnarFile) {
     ASSERT_GT(std::filesystem::file_size(output_file), 0);
 }
 
-TEST(ClickBenchQueriesTest, Query01CountAll) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query1) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"WatchID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -187,8 +187,8 @@ TEST(ClickBenchQueriesTest, Query01CountAll) {
     EXPECT_EQ(batch.value()[0]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query02CountWhereAdvEngineIdNotZero) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query2) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"AdvEngineID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -205,8 +205,8 @@ TEST(ClickBenchQueriesTest, Query02CountWhereAdvEngineIdNotZero) {
     EXPECT_EQ(batch.value()[0]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query03SumCountAvg) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query3) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"AdvEngineID", "ResolutionWidth"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -227,8 +227,8 @@ TEST(ClickBenchQueriesTest, Query03SumCountAvg) {
     EXPECT_EQ(batch.value()[2]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query04AvgUserId) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query4) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -241,8 +241,8 @@ TEST(ClickBenchQueriesTest, Query04AvgUserId) {
     EXPECT_EQ(batch.value()[0]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query05CountDistinctUserId) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query5) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -255,8 +255,8 @@ TEST(ClickBenchQueriesTest, Query05CountDistinctUserId) {
     EXPECT_EQ(batch.value()[0]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query06CountDistinctSearchPhrase) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query6) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -269,8 +269,8 @@ TEST(ClickBenchQueriesTest, Query06CountDistinctSearchPhrase) {
     EXPECT_EQ(batch.value()[0]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query07MinMaxEventDate) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query7) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"EventDate"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -288,8 +288,8 @@ TEST(ClickBenchQueriesTest, Query07MinMaxEventDate) {
     EXPECT_EQ(batch.value()[1]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query08GroupByAdvEngineIdOrderByCountDesc) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query8) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"AdvEngineID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -314,8 +314,8 @@ TEST(ClickBenchQueriesTest, Query08GroupByAdvEngineIdOrderByCountDesc) {
     }
 }
 
-TEST(ClickBenchQueriesTest, Query09GroupByRegionIdCountDistinctUserIdOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query9) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"RegionID", "UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -339,8 +339,8 @@ TEST(ClickBenchQueriesTest, Query09GroupByRegionIdCountDistinctUserIdOrderByDesc
     }
 }
 
-TEST(ClickBenchQueriesTest, Query10GroupByRegionIdMultipleAggregationsOrderByCountDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query10) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"RegionID", "AdvEngineID", "ResolutionWidth", "UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -379,8 +379,8 @@ TEST(ClickBenchQueriesTest, Query10GroupByRegionIdMultipleAggregationsOrderByCou
     }
 }
 
-TEST(ClickBenchQueriesTest, Query11GroupByMobilePhoneModelCountDistinctUserIdOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query11) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"MobilePhoneModel", "UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -408,8 +408,8 @@ TEST(ClickBenchQueriesTest, Query11GroupByMobilePhoneModelCountDistinctUserIdOrd
     }
 }
 
-TEST(ClickBenchQueriesTest, Query12GroupByMobilePhoneAndModelCountDistinctUserIdOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query12) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"MobilePhone", "MobilePhoneModel", "UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -441,8 +441,8 @@ TEST(ClickBenchQueriesTest, Query12GroupByMobilePhoneAndModelCountDistinctUserId
     }
 }
 
-TEST(ClickBenchQueriesTest, Query13GroupBySearchPhraseCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query13) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -470,8 +470,8 @@ TEST(ClickBenchQueriesTest, Query13GroupBySearchPhraseCountOrderByDescLimit10) {
     }
 }
 
-TEST(ClickBenchQueriesTest, Query14GroupBySearchPhraseCountDistinctUserIdOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query14) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase", "UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -499,8 +499,8 @@ TEST(ClickBenchQueriesTest, Query14GroupBySearchPhraseCountDistinctUserIdOrderBy
     }
 }
 
-TEST(ClickBenchQueriesTest, Query15GroupBySearchEngineIdAndSearchPhraseCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query15) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchEngineID", "SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -532,8 +532,8 @@ TEST(ClickBenchQueriesTest, Query15GroupBySearchEngineIdAndSearchPhraseCountOrde
     }
 }
 
-TEST(ClickBenchQueriesTest, Query16GroupByUserIdCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query16) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -557,8 +557,8 @@ TEST(ClickBenchQueriesTest, Query16GroupByUserIdCountOrderByDescLimit10) {
     }
 }
 
-TEST(ClickBenchQueriesTest, Query17GroupByUserIdAndSearchPhraseCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query17) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID", "SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -586,8 +586,8 @@ TEST(ClickBenchQueriesTest, Query17GroupByUserIdAndSearchPhraseCountOrderByDescL
     }
 }
 
-TEST(ClickBenchQueriesTest, Query18GroupByUserIdAndSearchPhraseLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query18) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID", "SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -611,8 +611,8 @@ TEST(ClickBenchQueriesTest, Query18GroupByUserIdAndSearchPhraseLimit10) {
     }
 }
 
-TEST(ClickBenchQueriesTest, Query19GroupByUserIdMinuteAndSearchPhraseCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query19) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID", "EventTime", "SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -663,8 +663,8 @@ TEST(ClickBenchQueriesTest, Query19GroupByUserIdMinuteAndSearchPhraseCountOrderB
     }
 }
 
-TEST(ClickBenchQueriesTest, Query20FilterUserId) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query20) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -684,8 +684,8 @@ TEST(ClickBenchQueriesTest, Query20FilterUserId) {
     EXPECT_GT(row_count, 0);
 }
 
-TEST(ClickBenchQueriesTest, Query21CountWhereUrlLikeGoogle) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query21) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -700,8 +700,8 @@ TEST(ClickBenchQueriesTest, Query21CountWhereUrlLikeGoogle) {
     EXPECT_EQ(batch.value()[0]->GetColumnAsString().size(), 1);
 }
 
-TEST(ClickBenchQueriesTest, Query22GroupBySearchPhraseMinUrlCountWhereUrlLikeGoogleOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query22) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase", "URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -737,8 +737,8 @@ TEST(ClickBenchQueriesTest, Query22GroupBySearchPhraseMinUrlCountWhereUrlLikeGoo
     }
 }
 
-TEST(ClickBenchQueriesTest, Query23GroupBySearchPhraseMinUrlMinTitleCountCountDistinctUserIdWithLikeFiltersOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query23) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase", "URL", "Title", "UserID"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -785,8 +785,8 @@ TEST(ClickBenchQueriesTest, Query23GroupBySearchPhraseMinUrlMinTitleCountCountDi
     }
 }
 
-TEST(ClickBenchQueriesTest, Query24SelectAllWhereUrlLikeGoogleOrderByEventTimeLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query24) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns = scheme.GetNamesOrdered();
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -812,8 +812,8 @@ TEST(ClickBenchQueriesTest, Query24SelectAllWhereUrlLikeGoogleOrderByEventTimeLi
     }
 }
 
-TEST(ClickBenchQueriesTest, Query25SearchPhraseWhereNotEmptyOrderByEventTimeLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query25) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase", "EventTime"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -835,8 +835,8 @@ TEST(ClickBenchQueriesTest, Query25SearchPhraseWhereNotEmptyOrderByEventTimeLimi
     }
 }
 
-TEST(ClickBenchQueriesTest, Query26SearchPhraseWhereNotEmptyOrderBySearchPhraseLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query26) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -858,8 +858,8 @@ TEST(ClickBenchQueriesTest, Query26SearchPhraseWhereNotEmptyOrderBySearchPhraseL
     }
 }
 
-TEST(ClickBenchQueriesTest, Query27SearchPhraseWhereNotEmptyOrderByEventTimeAndSearchPhraseLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query27) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchPhrase", "EventTime"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -881,8 +881,8 @@ TEST(ClickBenchQueriesTest, Query27SearchPhraseWhereNotEmptyOrderByEventTimeAndS
     }
 }
 
-TEST(ClickBenchQueriesTest, Query28GroupByCounterIdAvgLengthUrlCountHavingOrderByDescLimit25) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query28) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -940,8 +940,8 @@ TEST(ClickBenchQueriesTest, Query28GroupByCounterIdAvgLengthUrlCountHavingOrderB
     }
 }
 
-TEST(ClickBenchQueriesTest, Query29GroupByRefererHostAvgLengthCountMinHavingOrderByDescLimit25) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query29) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"Referer"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1008,8 +1008,8 @@ TEST(ClickBenchQueriesTest, Query29GroupByRefererHostAvgLengthCountMinHavingOrde
     }
 }
 
-TEST(ClickBenchQueriesTest, Query30ManySumsOfResolutionWidthWithOffsets) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query30) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
 
     constexpr int kNumAggregations = 90;
@@ -1046,8 +1046,8 @@ TEST(ClickBenchQueriesTest, Query30ManySumsOfResolutionWidthWithOffsets) {
     std::cout << std::endl;
 }
 
-TEST(ClickBenchQueriesTest, Query31GroupBySearchEngineIdAndClientIpCountSumAvgOrderByCountDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query31) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"SearchEngineID", "ClientIP", "SearchPhrase", "IsRefresh", "ResolutionWidth"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1089,8 +1089,8 @@ TEST(ClickBenchQueriesTest, Query31GroupBySearchEngineIdAndClientIpCountSumAvgOr
     }
 }
 
-TEST(ClickBenchQueriesTest, Query32GroupByWatchIdAndClientIpCountSumAvgOrderByCountDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query32) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"WatchID", "ClientIP", "SearchPhrase", "IsRefresh", "ResolutionWidth"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1132,8 +1132,8 @@ TEST(ClickBenchQueriesTest, Query32GroupByWatchIdAndClientIpCountSumAvgOrderByCo
     }
 }
 
-TEST(ClickBenchQueriesTest, Query33GroupByWatchIdAndClientIpCountSumAvgOrderByCountDescLimit10NoFilter) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query33) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"WatchID", "ClientIP", "IsRefresh", "ResolutionWidth"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1171,8 +1171,8 @@ TEST(ClickBenchQueriesTest, Query33GroupByWatchIdAndClientIpCountSumAvgOrderByCo
     }
 }
 
-TEST(ClickBenchQueriesTest, Query34GroupByUrlCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query34) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1196,8 +1196,8 @@ TEST(ClickBenchQueriesTest, Query34GroupByUrlCountOrderByDescLimit10) {
     }
 }
 
-TEST(ClickBenchQueriesTest, Query35GroupByConstantAndUrlCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query35) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1221,8 +1221,8 @@ TEST(ClickBenchQueriesTest, Query35GroupByConstantAndUrlCountOrderByDescLimit10)
     }
 }
 
-TEST(ClickBenchQueriesTest, Query36GroupByClientIpDerivedColumnsCountOrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query36) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"ClientIP"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1253,8 +1253,8 @@ TEST(ClickBenchQueriesTest, Query36GroupByClientIpDerivedColumnsCountOrderByDesc
     }
 }
 
-TEST(ClickBenchQueriesTest, Query37GroupByUrlCountFilteredJulyCounter62OrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query37) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "EventDate", "DontCountHits", "IsRefresh", "URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1295,8 +1295,8 @@ TEST(ClickBenchQueriesTest, Query37GroupByUrlCountFilteredJulyCounter62OrderByDe
     }
 }
 
-TEST(ClickBenchQueriesTest, Query38GroupByTitleCountFilteredJulyCounter62OrderByDescLimit10) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query38) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "EventDate", "DontCountHits", "IsRefresh", "Title"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1337,8 +1337,8 @@ TEST(ClickBenchQueriesTest, Query38GroupByTitleCountFilteredJulyCounter62OrderBy
     }
 }
 
-TEST(ClickBenchQueriesTest, Query39GroupByUrlCountFilteredJulyCounter62OrderByDescLimit10Offset1000) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query39) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "EventDate", "IsRefresh", "IsLink", "IsDownload", "URL"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1380,8 +1380,11 @@ TEST(ClickBenchQueriesTest, Query39GroupByUrlCountFilteredJulyCounter62OrderByDe
     }
 }
 
-TEST(ClickBenchQueriesTest, Query41GroupByUrlHashAndEventDateCountFilteredJulyCounter62OrderByDescLimit10Offset100) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query40) {
+}
+
+TEST(ClickBenchQueriesTest, Query41) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "EventDate", "IsRefresh", "TraficSourceID", "RefererHash", "URLHash"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1432,8 +1435,8 @@ TEST(ClickBenchQueriesTest, Query41GroupByUrlHashAndEventDateCountFilteredJulyCo
     }
 }
 
-TEST(ClickBenchQueriesTest, Query42GroupByWindowClientWidthAndHeightCountFilteredJulyCounter62OrderByDescLimit10Offset10000) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query42) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "EventDate", "IsRefresh", "DontCountHits", "URLHash", "WindowClientWidth", "WindowClientHeight"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);
@@ -1480,8 +1483,8 @@ TEST(ClickBenchQueriesTest, Query42GroupByWindowClientWidthAndHeightCountFiltere
     }
 }
 
-TEST(ClickBenchQueriesTest, Query43GroupByDateTruncMinuteCountFilteredJulyCounter62OrderByAscLimit10Offset1000) {
-    const char* input_db_file = "db_file_benchmark.egg";
+TEST(ClickBenchQueriesTest, Query43) {
+    const char* input_db_file = "db_file_benchmark_test.egg";
     Scheme scheme = GetDbScheme(input_db_file);
     std::vector<std::string> columns{"CounterID", "EventDate", "IsRefresh", "DontCountHits", "EventTime"};
     std::unique_ptr<IOperator> scan_operator = std::make_unique<ScanOperator>(input_db_file, columns);

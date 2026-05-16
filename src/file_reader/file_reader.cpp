@@ -5,7 +5,25 @@
 #include <vector>
 #include <stdexcept>
 #include <cstring>
-#include <iostream>
+
+namespace {
+
+template <typename T>
+T ReadStatBytes(const uint8_t*& ptr) {
+    T value;
+    std::memcpy(&value, ptr, sizeof(T));
+    ptr += sizeof(T);
+    return value;
+}
+
+std::string ReadStatString(const uint8_t*& ptr) {
+    int64_t len = ReadStatBytes<int64_t>(ptr);
+    std::string value(reinterpret_cast<const char*>(ptr), len);
+    ptr += len;
+    return value;
+}
+
+} // namespace
 
 RowGroupReader::RowGroupReader(std::istream& input) : impl_(std::make_unique<Impl>(input)) {}
 
@@ -25,7 +43,6 @@ public:
                 throw std::runtime_error("Cannot read batch.");
             }
         std::vector<int64_t> batch_metadata = metadata_.GetBatchMetadata(curr_batch);
-        int64_t batch_size = batch_metadata.front();
         std::vector<int64_t> column_sizes;
         for (int64_t i = 0; i < metadata_.GetColumnNum(); ++i) {
             column_sizes.push_back(batch_metadata[i + 1]);
@@ -36,10 +53,9 @@ public:
         }
         ++curr_batch;
         return std::move(row_group_);
-        
+
     }
 
-    // TODO:: Use ReadNextBatch here
     void ReadToCSV(const char* filename) {
         std::ofstream output(filename, std::ios::out | std::ios::trunc);
         InitRowGroup();
@@ -92,6 +108,19 @@ public:
             ++curr_batch;
         }
         output.close();
+    }
+
+    std::optional<BatchBlockStats> PeekNextBatchBlockStats() const {
+        if (curr_batch >= metadata_.GetBatchStartPos().size()) {
+            return std::nullopt;
+        }
+        return metadata_.GetBatchBlockStats(curr_batch);
+    }
+
+    void SkipNextBatch() {
+        if (curr_batch < metadata_.GetBatchStartPos().size()) {
+            ++curr_batch;
+        }
     }
 
     Scheme GetScheme() const {
@@ -159,6 +188,14 @@ std::optional<Batch> RowGroupReader::ReadNextBatch(const std::vector<int>& ids) 
     return impl_->ReadNextBatch(ids);
 }
 
+std::optional<BatchBlockStats> RowGroupReader::PeekNextBatchBlockStats() const {
+    return impl_->PeekNextBatchBlockStats();
+}
+
+void RowGroupReader::SkipNextBatch() {
+    impl_->SkipNextBatch();
+}
+
 Scheme RowGroupReader::GetScheme() const {
     return impl_->GetScheme();
 }
@@ -194,7 +231,7 @@ public:
         }
         std::memcpy(&column_num_, ptr, sizeof(int64_t));
         ptr += sizeof(int64_t);
-        
+
         types_info_.reserve(column_num_);
         for (int i = 0; i < column_num_; ++i) {
             int64_t type_info;
@@ -205,13 +242,48 @@ public:
         }
         size_t expected_metadata_count = batch_count_ * (column_num_ + 2);
         all_batch_metadata.reserve(expected_metadata_count);
-        
+
         for (size_t i = 0; i < expected_metadata_count; ++i) {
             int64_t value;
             std::memcpy(&value, ptr, sizeof(int64_t));
             ptr += sizeof(int64_t);
             all_batch_metadata.push_back(value);
         }
+        int64_t stats_blob_size;
+        std::memcpy(&stats_blob_size, ptr, sizeof(int64_t));
+        ptr += sizeof(int64_t);
+        const uint8_t* stats_end = ptr + stats_blob_size;
+        all_batch_block_stats_.reserve(batch_count_);
+        for (int64_t batch_idx = 0; batch_idx < batch_count_; ++batch_idx) {
+            BatchBlockStats batch_stats;
+            batch_stats.reserve(column_num_);
+            for (int64_t col_idx = 0; col_idx < column_num_; ++col_idx) {
+                ColumnBlockStats stats;
+                switch (types_info_[col_idx]) {
+                    case static_cast<int64_t>(Types::TypeInt16):
+                    case static_cast<int64_t>(Types::TypeInt32):
+                    case static_cast<int64_t>(Types::TypeInt64):
+                        stats.min_value = ReadStatBytes<int64_t>(ptr);
+                        stats.max_value = ReadStatBytes<int64_t>(ptr);
+                        break;
+                    case static_cast<int64_t>(Types::TypeDouble):
+                        stats.min_value = ReadStatBytes<double>(ptr);
+                        stats.max_value = ReadStatBytes<double>(ptr);
+                        break;
+                    case static_cast<int64_t>(Types::TypeString):
+                    case static_cast<int64_t>(Types::TypeDate):
+                    case static_cast<int64_t>(Types::TypeTimestamp):
+                        stats.min_value = ReadStatString(ptr);
+                        stats.max_value = ReadStatString(ptr);
+                        break;
+                    default:
+                        break;
+                }
+                batch_stats.push_back(std::move(stats));
+            }
+            all_batch_block_stats_.push_back(std::move(batch_stats));
+        }
+        ptr = stats_end;
         while (ptr < end) {
             int64_t string_length;
             std::memcpy(&string_length, ptr, sizeof(int64_t));
@@ -222,10 +294,6 @@ public:
         }
     }
 public:
-    int64_t GetBatchCount() const {
-        return batch_count_;
-    }
-
     std::vector<int64_t> GetBatchStartPos() const {
         return batch_start_pos_;
     }
@@ -248,6 +316,10 @@ public:
         return result;
     }
 
+    BatchBlockStats GetBatchBlockStats(int64_t i) const {
+        return all_batch_block_stats_[i];
+    }
+
     Scheme GetScheme() const {
         return scheme_;
     }
@@ -258,6 +330,7 @@ protected:
     int64_t column_num_;
     std::vector<int64_t> types_info_;
     std::vector<int64_t> all_batch_metadata;
+    std::vector<BatchBlockStats> all_batch_block_stats_;
     Scheme scheme_;
 };
 
@@ -277,6 +350,10 @@ void Metadata::Read() {
 
 std::vector<int64_t> Metadata::GetBatchMetadata(int64_t i) const {
     return impl_->GetBatchMetadata(i);
+}
+
+BatchBlockStats Metadata::GetBatchBlockStats(const int64_t i) const {
+    return impl_->GetBatchBlockStats(i);
 }
 
 int64_t Metadata::GetColumnNum() const {

@@ -10,16 +10,21 @@
 
 using Batch = std::vector<std::unique_ptr<Column>>;
 
-enum MetadataIndex {
-    BatchCount = 0
-
+struct ColumnBlockStats {
+    CellTypes min_value;
+    CellTypes max_value;
 };
+
+using BatchBlockStats = std::vector<ColumnBlockStats>;
+
 
 class RowGroupReader {
 public:
     RowGroupReader(std::istream& input);
     void ReadToCSV(const char* filename);
     std::optional<Batch> ReadNextBatch(const std::vector<int>& ids);
+    std::optional<BatchBlockStats> PeekNextBatchBlockStats() const;
+    void SkipNextBatch();
     Scheme GetScheme() const;
     ~RowGroupReader();
 
@@ -37,6 +42,7 @@ public:
     std::vector<int64_t> GetTypesInfo() const;
     std::vector<int64_t> GetBatchStartPos() const;
     std::vector<int64_t> GetBatchMetadata(const int64_t i) const;
+    BatchBlockStats GetBatchBlockStats(const int64_t i) const;
     int64_t GetColumnNum() const;
     Scheme GetScheme() const;
 protected:

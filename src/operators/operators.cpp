@@ -3,7 +3,6 @@
 #include "../utilities/utilities.h"
 
 #include <algorithm>
-#include <iostream>
 #include <queue>
 #include <stdexcept>
 #include <unordered_map>
@@ -150,6 +149,7 @@ void AddResultColumn(Batch& batch, std::vector<int64_t>& curr_types, GlobalAggre
     }
 }
 
+
 } // namespace
 
 ScanOperator::ScanOperator(const std::string& filename, const std::vector<std::string>& columns) 
@@ -164,11 +164,23 @@ ScanOperator::ScanOperator(const std::string& filename, const std::vector<std::s
         }
       }
 std::optional<Batch> ScanOperator::Next() {
-    std::optional<Batch> batch = reader_.ReadNextBatch(curr_ids_);
-    if (!batch.has_value()) {
-        return std::nullopt;
+    while (true) {
+        if (batch_filter_ != nullptr) {
+            std::optional<BatchBlockStats> batch_stats = reader_.PeekNextBatchBlockStats();
+            if (!batch_stats.has_value()) {
+                return std::nullopt;
+            }
+            if (batch_filter_->CanSkipBatch(batch_stats.value())) {
+                reader_.SkipNextBatch();
+                continue;
+            }
+        }
+        std::optional<Batch> batch = reader_.ReadNextBatch(curr_ids_);
+        if (!batch.has_value()) {
+            return std::nullopt;
+        }
+        return std::move(batch);
     }
-    return std::move(batch);
 }
 
 std::optional<Batch> FilterOperator::Next() {

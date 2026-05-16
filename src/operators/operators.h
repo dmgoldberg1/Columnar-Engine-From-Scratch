@@ -9,12 +9,12 @@
 
 using Batch = std::vector<std::unique_ptr<Column>>;
 
-// TODO: remove fucking GetCurrColIds
 class IOperator {
 public:
     virtual std::optional<Batch> Next() = 0;
     virtual std::vector<int> GetCurrColIds() const = 0;
     virtual std::vector<int64_t> GetCurrColTypes() const = 0;
+    virtual void SetBatchFilter(const class FilterCondition* condition) {}
     virtual ~IOperator() = default;
 };
 
@@ -27,7 +27,8 @@ public:
     std::vector<int64_t> GetCurrColTypes() const override {
         return curr_types_;
     }
-          
+    void SetBatchFilter(const class FilterCondition* condition) override { batch_filter_ = condition; }
+
     std::optional<Batch> Next() override;
 protected:
     std::vector<std::string> columns_;
@@ -35,12 +36,14 @@ protected:
     RowGroupReader reader_;
     std::vector<int> curr_ids_;
     std::vector<int64_t> curr_types_;
+    const class FilterCondition* batch_filter_ = nullptr;
 };
 
 class FilterCondition {
 public:
     virtual ~FilterCondition() = default;
     virtual bool Evaluate(const Batch& batch, size_t row_index) const = 0;
+    virtual bool CanSkipBatch(const BatchBlockStats& batch_stats) const { return false; }
 };
 
 template<typename T>
@@ -50,6 +53,30 @@ public:
     CompareFilter(const std::string& column, Op op, T value, Scheme scheme) : column_(column), op_(op), value_(value), scheme_(scheme) {}
     bool Evaluate(const Batch& batch, size_t row_index) const override {
         return batch[scheme_.GetColumnIndex(column_)]->Compare(row_index, op_, value_);
+    }
+    bool CanSkipBatch(const BatchBlockStats& batch_stats) const override {
+        const int column_index = scheme_.GetColumnIndex(column_);
+        if (column_index < 0 || column_index >= static_cast<int>(batch_stats.size())) {
+            return false;
+        }
+        const ColumnBlockStats& stats = batch_stats[column_index];
+        const CellTypes value = CellTypes(value_);
+
+        switch (op_) {
+            case Op::EQ:
+                return stats.min_value > value || stats.max_value < value;
+            case Op::NE:
+                return stats.min_value == value && stats.max_value == value;
+            case Op::LT:
+                return stats.min_value >= value;
+            case Op::LE:
+                return stats.min_value > value;
+            case Op::GT:
+                return stats.max_value <= value;
+            case Op::GE:
+                return stats.max_value < value;
+        }
+        return false;
     }
 protected:
     std::string column_;
@@ -68,6 +95,9 @@ public:
     bool Evaluate(const Batch& batch, size_t row_index) const override {
         return batch[column_index_]->Compare(row_index, op_, value_);
     }
+    bool CanSkipBatch(const BatchBlockStats& batch_stats) const override {
+        return false;
+    }
 
 protected:
     int column_index_;
@@ -84,6 +114,9 @@ public:
         const std::string value = batch[scheme_.GetColumnIndex(column_)]->GetCellAsString(row_index);
         return value.find(pattern_) != std::string::npos;
     }
+    bool CanSkipBatch(const BatchBlockStats& batch_stats) const override {
+        return false;
+    }
 
 protected:
     std::string column_;
@@ -98,6 +131,9 @@ public:
     bool Evaluate(const Batch& batch, size_t row_index) const override {
         return !child_->Evaluate(batch, row_index);
     }
+    bool CanSkipBatch(const BatchBlockStats& batch_stats) const override {
+        return false;
+    }
 
 protected:
     std::unique_ptr<FilterCondition> child_;
@@ -108,6 +144,9 @@ public:
     AndFilter(std::unique_ptr<FilterCondition> left, std::unique_ptr<FilterCondition> right) : left_(std::move(left)), right_(std::move(right)) {}
     bool Evaluate(const Batch& batch, size_t row_index) const override {
         return left_->Evaluate(batch, row_index) && right_->Evaluate(batch, row_index);
+    }
+    bool CanSkipBatch(const BatchBlockStats& batch_stats) const override {
+        return left_->CanSkipBatch(batch_stats) || right_->CanSkipBatch(batch_stats);
     }
 
 protected:
@@ -122,6 +161,9 @@ public:
     bool Evaluate(const Batch& batch, size_t row_index) const override {
         return left_->Evaluate(batch, row_index) || right_->Evaluate(batch, row_index);
     }
+    bool CanSkipBatch(const BatchBlockStats& batch_stats) const override {
+        return left_->CanSkipBatch(batch_stats) && right_->CanSkipBatch(batch_stats);
+    }
 
 protected:
     std::unique_ptr<FilterCondition> left_;
@@ -132,10 +174,13 @@ protected:
 
 class FilterOperator : public IOperator {
 public:
-    FilterOperator(std::unique_ptr<IOperator> child, std::unique_ptr<FilterCondition> cond) : child_(std::move(child)), condition_(std::move(cond)) {}
+    FilterOperator(std::unique_ptr<IOperator> child, std::unique_ptr<FilterCondition> cond) : child_(std::move(child)), condition_(std::move(cond)) {
+        child_->SetBatchFilter(condition_.get());
+    }
     std::optional<Batch> Next() override;
     std::vector<int> GetCurrColIds() const override;
     std::vector<int64_t> GetCurrColTypes() const override { return child_->GetCurrColTypes(); }
+    void SetBatchFilter(const FilterCondition* condition) override { child_->SetBatchFilter(condition); }
 protected:
     std::unique_ptr<IOperator> child_;
     std::unique_ptr<FilterCondition> condition_;
@@ -214,7 +259,7 @@ protected:
 
 class MinAccumulator : public IAccumulator {
 public:
-    explicit MinAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
+    MinAccumulator() = default;
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
@@ -222,14 +267,13 @@ public:
     }
 
 protected:
-    AggregationTransform transform_;
     CellTypes min_;
     bool has_data_ = false;
 };
 
 class MaxAccumulator : public IAccumulator {
 public:
-    explicit MaxAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
+    MaxAccumulator() = default;
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
@@ -237,7 +281,6 @@ public:
     }
 
 protected:
-    AggregationTransform transform_;
     CellTypes max_;
     bool has_data_ = false;
 };
@@ -246,27 +289,25 @@ protected:
 
 class CountDistinctIntAccumulator : public IAccumulator {
 public:
-    explicit CountDistinctIntAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
+    CountDistinctIntAccumulator() = default;
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return static_cast<int64_t>(set_.size());
     }
 protected:
-    AggregationTransform transform_;
     std::unordered_set<int64_t> set_;
 };
 
 class CountDistinctStringAccumulator : public IAccumulator {
 public:
-    explicit CountDistinctStringAccumulator(AggregationTransform transform = {}) : transform_(std::move(transform)) {}
+    CountDistinctStringAccumulator() = default;
     void Update(const Column* column) override;
     void Update(const Column* column, const std::vector<uint64_t>& mask) override;
     CellTypes GetResult() const override {
         return static_cast<int64_t>(set_.size());
     }
 protected:
-    AggregationTransform transform_;
     std::unordered_set<std::string> set_;
 };
 

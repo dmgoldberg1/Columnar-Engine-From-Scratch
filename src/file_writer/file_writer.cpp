@@ -11,6 +11,70 @@
 #include <iomanip>
 
 static inline constexpr int64_t RowGroupSize = 128 * 1024 * 1024;
+
+namespace {
+
+struct ColumnBlockStatsData {
+    CellTypes min_value;
+    CellTypes max_value;
+};
+
+using BatchBlockStatsData = std::vector<ColumnBlockStatsData>;
+
+template <typename T>
+void AppendStatBytes(std::vector<uint8_t>& output, const T& value) {
+    const auto* ptr = reinterpret_cast<const uint8_t*>(&value);
+    output.insert(output.end(), ptr, ptr + sizeof(T));
+}
+
+void AppendStatString(std::vector<uint8_t>& output, const std::string& value) {
+    int64_t len = static_cast<int64_t>(value.size());
+    AppendStatBytes<int64_t>(output, len);
+    output.insert(output.end(), value.begin(), value.end());
+}
+
+ColumnBlockStatsData ComputeColumnBlockStats(const Column* column) {
+    ColumnBlockStatsData stats;
+    stats.min_value = column->GetMin();
+    stats.max_value = column->GetMax();
+    return stats;
+}
+
+std::vector<uint8_t> SerializeBatchBlockStats(
+    const std::vector<BatchBlockStatsData>& all_batch_block_stats,
+    const std::vector<int64_t>& types
+) {
+    std::vector<uint8_t> output;
+    for (const auto& batch_stats : all_batch_block_stats) {
+        for (size_t i = 0; i < batch_stats.size(); ++i) {
+            const auto& stats = batch_stats[i];
+            switch (types[i]) {
+                case static_cast<int64_t>(Types::TypeInt16):
+                case static_cast<int64_t>(Types::TypeInt32):
+                case static_cast<int64_t>(Types::TypeInt64):
+                    AppendStatBytes<int64_t>(output, std::get<int64_t>(stats.min_value));
+                    AppendStatBytes<int64_t>(output, std::get<int64_t>(stats.max_value));
+                    break;
+                case static_cast<int64_t>(Types::TypeDouble):
+                    AppendStatBytes<double>(output, std::get<double>(stats.min_value));
+                    AppendStatBytes<double>(output, std::get<double>(stats.max_value));
+                    break;
+                case static_cast<int64_t>(Types::TypeString):
+                case static_cast<int64_t>(Types::TypeDate):
+                case static_cast<int64_t>(Types::TypeTimestamp):
+                    AppendStatString(output, std::get<std::string>(stats.min_value));
+                    AppendStatString(output, std::get<std::string>(stats.max_value));
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    return output;
+}
+
+} // namespace
+
 RowGroupWriter::RowGroupWriter(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : impl_(std::make_unique<Impl>(std::move(reader), output, scheme)) {
 }
 
@@ -76,10 +140,13 @@ public:
         file_metadata.push_back(column_num_);
         file_metadata.insert(file_metadata.end(), types_.begin(), types_.end());
         file_metadata.insert(file_metadata.end(), all_batch_metadata_.begin(), all_batch_metadata_.end());
+        std::vector<uint8_t> stats_bytes = SerializeBatchBlockStats(all_batch_block_stats_, types_);
+        file_metadata.push_back(static_cast<int64_t>(stats_bytes.size()));
         std::vector<uint8_t> scheme_bytes = scheme_.Serialize();
         output_.write(reinterpret_cast<const char*>(file_metadata.data()), file_metadata.size() * sizeof(int64_t));
+        output_.write(reinterpret_cast<const char*>(stats_bytes.data()), stats_bytes.size());
         output_.write(reinterpret_cast<const char*>(scheme_bytes.data()), scheme_bytes.size());
-        uint64_t metadata_size = scheme_bytes.size() + file_metadata.size() * sizeof(int64_t);
+        uint64_t metadata_size = stats_bytes.size() + scheme_bytes.size() + file_metadata.size() * sizeof(int64_t);
         output_.write(reinterpret_cast<const char*>(&metadata_size), sizeof(metadata_size));
         csv_reader_.Close();
     }
@@ -148,6 +215,11 @@ protected:
         for (int64_t i = 0; i < column_num_; ++i) {
             row_group_[i]->AddColumn(str_batch[i]);
         }
+        BatchBlockStatsData batch_stats;
+        batch_stats.reserve(column_num_);
+        for (int64_t i = 0; i < column_num_; ++i) {
+            batch_stats.push_back(ComputeColumnBlockStats(row_group_[i].get()));
+        }
         std::vector<int64_t> encoded_sizes;
         int64_t encoded_group_size = 0;
         for (int64_t i = 0; i < column_num_; ++i) {
@@ -156,6 +228,7 @@ protected:
             encoded_sizes.push_back(encoded_column.size());
             output_.write(reinterpret_cast<const char*>(encoded_column.data()), encoded_column.size());
         }
+        all_batch_block_stats_.push_back(std::move(batch_stats));
         all_batch_metadata_.push_back(encoded_group_size);
         for (int64_t i = 0; i < column_num_; ++i) {
             all_batch_metadata_.push_back(encoded_sizes[i]);
@@ -174,6 +247,7 @@ protected:
     Scheme& scheme_;
     std::vector<std::unique_ptr<Column>> row_group_;
     std::vector<int64_t> all_batch_metadata_;
+    std::vector<BatchBlockStatsData> all_batch_block_stats_;
     std::vector<int64_t> types_;
     bool progress_logging_enabled_ = false;
 
