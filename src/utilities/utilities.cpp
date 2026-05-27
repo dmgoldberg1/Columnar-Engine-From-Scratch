@@ -23,24 +23,6 @@ const std::vector<std::string>& GetHitsColumnNames() {
     return kHitsColumnNames;
 }
 
-bool isInteger(const std::string& str) {
-    if (str.empty()) {
-        return false;
-    }
-    size_t start = 0;
-    if (str[0] == '+' || str[0] == '-') {
-        if (str.size() == 1) {
-            return false;
-        }
-        start = 1;
-    }
-    for (size_t i = start; i < str.size(); ++i) {
-        if (!std::isdigit(static_cast<unsigned char>(str[i]))) {
-            return false;
-        }
-    }
-    return true;
-}
 
 bool isDate(const std::string& str) {
     if (str.size() != 10 || str[4] != '-' || str[7] != '-') {
@@ -127,9 +109,6 @@ std::string FormatTimestamp(uint32_t value) {
     return buffer;
 }
 
-void WriteNum(int64_t num, std::ostream& output) {
-    output.write(reinterpret_cast<const char*>(&num), sizeof(num));
-}
 
 uint64_t HashInt64(int64_t x) {
     uint64_t z = static_cast<uint64_t>(x);

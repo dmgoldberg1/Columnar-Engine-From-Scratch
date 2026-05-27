@@ -1,6 +1,5 @@
 #include "csv_wrapper.h"
 
-#include <sstream>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
@@ -85,10 +84,6 @@ public:
         return column_num_;
     }
 
-    int64_t GetCurrRowSize() const {
-        return curr_row_size_;
-    }
-
     uint64_t GetReadPosition() const {
         auto pos = input_.tellg();
         if (pos < 0) {
@@ -121,7 +116,7 @@ CSVWrapper::CSVWrapper(const char* input_path) : impl_(std::make_unique<Impl>(in
 }
 
 CSVWrapper::~CSVWrapper() = default;
-CSVWrapper::CSVWrapper() = default;
+CSVWrapper::CSVWrapper(CSVWrapper&& reader) = default;
 CSVWrapper& CSVWrapper::operator=(CSVWrapper&& reader) {
     this->impl_ = std::move(reader.impl_);
     return *this;
@@ -145,10 +140,6 @@ size_t CSVWrapper::GetColumnNum() const {
 
 void CSVWrapper::Close() {
     impl_->Close();
-}
-
-int64_t CSVWrapper::GetCurrRowSize() const {
-    return impl_->GetCurrRowSize();
 }
 
 uint64_t CSVWrapper::GetReadPosition() const {

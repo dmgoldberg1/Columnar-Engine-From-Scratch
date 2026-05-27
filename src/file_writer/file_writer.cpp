@@ -80,8 +80,7 @@ RowGroupWriter::RowGroupWriter(CSVWrapper&& reader, std::ostream& output, Scheme
 
 class RowGroupWriter::Impl {
 public:
-    Impl(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : output_(output), scheme_(scheme) {
-        csv_reader_ = std::move(reader);
+    Impl(CSVWrapper&& reader, std::ostream& output, Scheme& scheme) : csv_reader_(std::move(reader)), output_(output), scheme_(scheme) {
         column_num_ = csv_reader_.GetColumnNum();
         types_ = scheme.GetTypesInfo();
         for (int64_t i = 0; i < column_num_; ++i) {
