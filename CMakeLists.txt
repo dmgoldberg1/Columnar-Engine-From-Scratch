@@ -54,5 +54,3 @@ target_link_libraries(
 include(GoogleTest)
 gtest_discover_tests(tests)
 gtest_discover_tests(benchmark)
-
-add_executable(main main.cpp)
