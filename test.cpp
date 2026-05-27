@@ -90,6 +90,153 @@ std::vector<int64_t> GetGeneratedCsvTypes() {
 }
 
 
+TEST(BlockSkippingTest, Compare) {
+    Scheme scheme;
+    scheme.AddColumnName("Age");
+    scheme.AddColumnType(static_cast<int64_t>(Types::TypeInt64));
+
+    BatchBlockStats stats{{ColumnBlockStats{static_cast<int64_t>(10), static_cast<int64_t>(20)}}};
+
+    CompareFilter<int64_t> eq_miss("Age", Column::Op::EQ, 42, scheme);
+    CompareFilter<int64_t> eq_hit("Age", Column::Op::EQ, 15, scheme);
+    CompareFilter<int64_t> gt_miss("Age", Column::Op::GT, 25, scheme);
+    CompareFilter<int64_t> lt_miss("Age", Column::Op::LT, 5, scheme);
+
+    EXPECT_TRUE(eq_miss.CanSkipBatch(stats));
+    EXPECT_FALSE(eq_hit.CanSkipBatch(stats));
+    EXPECT_TRUE(gt_miss.CanSkipBatch(stats));
+    EXPECT_TRUE(lt_miss.CanSkipBatch(stats));
+}
+
+TEST(BlockSkippingTest, Composite) {
+    Scheme scheme;
+    scheme.AddColumnName("Age");
+    scheme.AddColumnName("Name");
+    scheme.AddColumnType(static_cast<int64_t>(Types::TypeInt64));
+    scheme.AddColumnType(static_cast<int64_t>(Types::TypeString));
+
+    BatchBlockStats stats{
+        ColumnBlockStats{static_cast<int64_t>(10), static_cast<int64_t>(20)},
+        ColumnBlockStats{std::string("m"), std::string("z")}
+    };
+
+    auto and_filter = AndFilter(
+        std::make_unique<CompareFilter<int64_t>>("Age", Column::Op::EQ, 5, scheme),
+        std::make_unique<CompareFilter<std::string>>("Name", Column::Op::EQ, std::string("x"), scheme)
+    );
+    EXPECT_TRUE(and_filter.CanSkipBatch(stats));
+
+    auto or_filter_both_impossible = OrFilter(
+        std::make_unique<CompareFilter<int64_t>>("Age", Column::Op::EQ, 5, scheme),
+        std::make_unique<CompareFilter<std::string>>("Name", Column::Op::EQ, std::string("abc"), scheme)
+    );
+    EXPECT_TRUE(or_filter_both_impossible.CanSkipBatch(stats));
+
+    auto or_filter_one_possible = OrFilter(
+        std::make_unique<CompareFilter<int64_t>>("Age", Column::Op::EQ, 15, scheme),
+        std::make_unique<CompareFilter<std::string>>("Name", Column::Op::EQ, std::string("abc"), scheme)
+    );
+    EXPECT_FALSE(or_filter_one_possible.CanSkipBatch(stats));
+}
+
+TEST(BlockSkippingTest, Conservative) {
+    Scheme scheme;
+    scheme.AddColumnName("URL");
+    scheme.AddColumnType(static_cast<int64_t>(Types::TypeString));
+
+    BatchBlockStats stats{{ColumnBlockStats{std::string("a"), std::string("z")}}};
+
+    LikeFilter like_filter("URL", "google", scheme);
+    CompareFilterByIndex by_index_filter(0, Column::Op::EQ, std::string("value"));
+    NotFilter not_filter(std::make_unique<CompareFilter<std::string>>("URL", Column::Op::EQ, std::string("google"), scheme));
+
+    EXPECT_FALSE(like_filter.CanSkipBatch(stats));
+    EXPECT_FALSE(by_index_filter.CanSkipBatch(stats));
+    EXPECT_FALSE(not_filter.CanSkipBatch(stats));
+}
+
+TEST(CompressionTest, Ints) {
+    Int16 int16_col;
+    int16_col.AddCell(CellTypes(static_cast<int64_t>(-7)));
+    int16_col.AddCell(CellTypes(static_cast<int64_t>(0)));
+    int16_col.AddCell(CellTypes(static_cast<int64_t>(42)));
+    std::vector<uint8_t> int16_encoded = int16_col.Encode();
+    Int16 int16_decoded;
+    int16_decoded.Decode(int16_encoded);
+    EXPECT_EQ(int16_col.GetColumnAsString(), int16_decoded.GetColumnAsString());
+
+    Int32 int32_col;
+    int32_col.AddCell(CellTypes(static_cast<int64_t>(-1000)));
+    int32_col.AddCell(CellTypes(static_cast<int64_t>(17)));
+    int32_col.AddCell(CellTypes(static_cast<int64_t>(123456)));
+    std::vector<uint8_t> int32_encoded = int32_col.Encode();
+    Int32 int32_decoded;
+    int32_decoded.Decode(int32_encoded);
+    EXPECT_EQ(int32_col.GetColumnAsString(), int32_decoded.GetColumnAsString());
+
+    Int64 int64_col;
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(-123456789)));
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(0)));
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(987654321)));
+    std::vector<uint8_t> int64_encoded = int64_col.Encode();
+    Int64 int64_decoded;
+    int64_decoded.Decode(int64_encoded);
+    EXPECT_EQ(int64_col.GetColumnAsString(), int64_decoded.GetColumnAsString());
+}
+
+TEST(CompressionTest, DoubleDateTimestamp) {
+    Double double_col;
+    double_col.AddCell(CellTypes(1.5));
+    double_col.AddCell(CellTypes(-0.25));
+    double_col.AddCell(CellTypes(42.125));
+    std::vector<uint8_t> double_encoded = double_col.Encode();
+    Double double_decoded;
+    double_decoded.Decode(double_encoded);
+    EXPECT_EQ(double_col.GetColumnAsString(), double_decoded.GetColumnAsString());
+
+    Date date_col;
+    date_col.AddCell(std::string("2024-05-16"));
+    date_col.AddCell(std::string("2024-05-17"));
+    std::vector<uint8_t> date_encoded = date_col.Encode();
+    Date date_decoded;
+    date_decoded.Decode(date_encoded);
+    EXPECT_EQ(date_col.GetColumnAsString(), date_decoded.GetColumnAsString());
+
+    Timestamp timestamp_col;
+    timestamp_col.AddCell(std::string("2024-05-16 12:30:45"));
+    timestamp_col.AddCell(std::string("2024-05-17 08:15:00"));
+    std::vector<uint8_t> timestamp_encoded = timestamp_col.Encode();
+    Timestamp timestamp_decoded;
+    timestamp_decoded.Decode(timestamp_encoded);
+    EXPECT_EQ(timestamp_col.GetColumnAsString(), timestamp_decoded.GetColumnAsString());
+}
+
+TEST(CompressionTest, StringDictionary) {
+    String string_col;
+    string_col.AddCell(std::string("alpha"));
+    string_col.AddCell(std::string("beta"));
+    string_col.AddCell(std::string("alpha"));
+    string_col.AddCell(std::string("beta"));
+
+    std::vector<uint8_t> encoded = string_col.Encode();
+    String decoded;
+    decoded.Decode(encoded);
+    EXPECT_EQ(string_col.GetColumnAsString(), decoded.GetColumnAsString());
+}
+
+TEST(CompressionTest, StringDeltaLength) {
+    String string_col;
+    for (int i = 0; i < 150; ++i) {
+        string_col.AddCell("prefix_shared_value_" + std::to_string(i));
+    }
+
+    std::vector<uint8_t> encoded = string_col.Encode();
+    String decoded;
+    decoded.Decode(encoded);
+    EXPECT_EQ(string_col.GetColumnAsString(), decoded.GetColumnAsString());
+}
+
+
 TEST(CSVWrapperCreateFileTest, EmptyFile) {
     const char* filename = "test_empty.csv";
     {
@@ -148,27 +295,6 @@ TEST(RowGroupWriterTest, JustWorks) {
     std::remove(output_file);
 }
 
-// TEST(RowGroupWriterTest, IncorrectCellTypes) {
-//     const char* input_file = "test.csv";
-//     {
-//         std::ofstream out(input_file);
-//         out << "Name,Age,City\n"
-//             << "John,25,NYC\n"
-//             << "Jane,AMOGUS,LA";
-//     }
-//     const char* output_file = "db_file.egg";
-
-//     Scheme scheme;
-//     CSVWrapper parser(input_file);
-//     parser.SetScheme(scheme, GetSimpleCsvTypes());
-//     std::ofstream output(output_file, std::ios::binary);
-//     RowGroupWriter writer(std::move(parser), output, scheme);
-//     EXPECT_THROW(writer.WriteAll(), std::runtime_error);
-//     output.close();
-//     std::remove(input_file);
-//     std::remove(output_file);
-// }
-
 TEST(RowGroupReaderTest, SimpleTest) {
     const char* input_csv_file = "test.csv";
     {
@@ -216,15 +342,6 @@ TEST(RowGroupReaderTest, BigFile) {
     RowGroupWriter writer(std::move(parser), output, scheme);
     writer.WriteAll();
     output.close();
-    // const char* input_db_file = "db_file.egg";
-    // std::ifstream input(input_db_file, std::ios::binary | std::ios::ate);
-    // RowGroupReader reader(input);
-    // const char* output_csv_file = "test_output.csv";
-    // reader.ReadToCSV(output_csv_file);
-    // EXPECT_TRUE(CompareCSVFiles(input_csv_file, output_csv_file));
-    // std::remove(output_file);
-    // std::remove(input_csv_file);
-    // std::remove(output_csv_file);
 }
 
 TEST(BasicOperatorsTest, ScanOperatorTest) {

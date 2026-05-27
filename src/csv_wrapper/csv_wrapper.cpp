@@ -5,27 +5,6 @@
 #include <stdexcept>
 #include <vector>
 
-namespace {
-
-const std::vector<std::string>& GetHitsColumnNames() {
-    static const std::vector<std::string> kHitsColumnNames = {
-        "WatchID", "JavaEnable", "Title", "GoodEvent", "EventTime", "EventDate", "CounterID", "ClientIP", "RegionID", "UserID",
-        "CounterClass", "OS", "UserAgent", "URL", "Referer", "IsRefresh", "RefererCategoryID", "RefererRegionID", "URLCategoryID", "URLRegionID",
-        "ResolutionWidth", "ResolutionHeight", "ResolutionDepth", "FlashMajor", "FlashMinor", "FlashMinor2", "NetMajor", "NetMinor", "UserAgentMajor", "UserAgentMinor",
-        "CookieEnable", "JavascriptEnable", "IsMobile", "MobilePhone", "MobilePhoneModel", "Params", "IPNetworkID", "TraficSourceID", "SearchEngineID", "SearchPhrase",
-        "AdvEngineID", "IsArtifical", "WindowClientWidth", "WindowClientHeight", "ClientTimeZone", "ClientEventTime", "SilverlightVersion1", "SilverlightVersion2", "SilverlightVersion3", "SilverlightVersion4",
-        "PageCharset", "CodeVersion", "IsLink", "IsDownload", "IsNotBounce", "FUniqID", "OriginalURL", "HID", "IsOldCounter", "IsEvent",
-        "IsParameter", "DontCountHits", "WithHash", "HitColor", "LocalEventTime", "Age", "Sex", "Income", "Interests", "Robotness",
-        "RemoteIP", "WindowName", "OpenerName", "HistoryLength", "BrowserLanguage", "BrowserCountry", "SocialNetwork", "SocialAction", "HTTPError", "SendTiming",
-        "DNSTiming", "ConnectTiming", "ResponseStartTiming", "ResponseEndTiming", "FetchTiming", "SocialSourceNetworkID", "SocialSourcePage", "ParamPrice", "ParamOrderID", "ParamCurrency",
-        "ParamCurrencyID", "OpenstatServiceName", "OpenstatCampaignID", "OpenstatAdID", "OpenstatSourceID", "UTMSource", "UTMMedium", "UTMCampaign", "UTMContent", "UTMTerm",
-        "FromTag", "HasGCLID", "RefererHash", "URLHash", "CLID"
-    };
-    return kHitsColumnNames;
-}
-
-} // namespace
-
 class CSVWrapper::Impl {
 public:
     Impl(const char* input_path) : input_(input_file_) {
@@ -85,11 +64,9 @@ public:
         return record;
     }
 
-    void SetScheme(Scheme& scheme, const std::vector<int64_t>& types) {
-        std::vector<std::string> col_names;
-        if (types.size() == GetHitsColumnNames().size()) {
-            col_names = GetHitsColumnNames();
-        } else {
+    void SetScheme(Scheme& scheme, const std::vector<int64_t>& types, const std::vector<std::string>& column_names) {
+        std::vector<std::string> col_names = column_names;
+        if (col_names.empty()) {
             col_names = GetNextLineAndSplitIntoTokens();
         }
         for (const auto& name : col_names) {
@@ -154,8 +131,8 @@ std::vector<std::string> CSVWrapper::GetNextLineAndSplitIntoTokens() {
     return impl_->GetNextLineAndSplitIntoTokens();
 }
 
-void CSVWrapper::SetScheme(Scheme& scheme, const std::vector<int64_t>& types) {
-    impl_->SetScheme(scheme, types);
+void CSVWrapper::SetScheme(Scheme& scheme, const std::vector<int64_t>& types, const std::vector<std::string>& column_names) {
+    impl_->SetScheme(scheme, types, column_names);
 }
 
 bool CSVWrapper::IsEnd() const {

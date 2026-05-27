@@ -25,7 +25,7 @@ public:
     int64_t GetCurrRowSize() const;
     uint64_t GetReadPosition() const;
     uint64_t GetFileSize() const;
-    void SetScheme(Scheme& scheme, const std::vector<int64_t>& types);
+    void SetScheme(Scheme& scheme, const std::vector<int64_t>& types, const std::vector<std::string>& column_names = {});
     ~CSVWrapper();
 
 

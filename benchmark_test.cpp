@@ -162,7 +162,7 @@ TEST(ClickBenchQueriesTest, BuildHitsColumnarFile) {
     ASSERT_TRUE(std::filesystem::exists(input_csv_file));
     Scheme scheme;
     CSVWrapper parser(input_csv_file);
-    parser.SetScheme(scheme, GetHitsColumnTypes());
+    parser.SetScheme(scheme, GetHitsColumnTypes(), GetHitsColumnNames());
     std::ofstream output(output_file, std::ios::binary | std::ios::trunc);
     ASSERT_TRUE(output.is_open());
     RowGroupWriter writer(std::move(parser), output, scheme);
