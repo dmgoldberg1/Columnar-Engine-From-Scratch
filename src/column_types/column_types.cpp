@@ -12,6 +12,7 @@
 
 namespace {
 
+
 enum class StringEncoding : uint8_t {
     Dictionary = 0,
     DeltaLengthByteArray = 1,
@@ -393,6 +394,22 @@ int64_t Int16::GetRowCount(const std::vector<uint64_t>& mask) const {
     return mask.size();
 }
 
+int64_t Int16::GetSum(const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (int16_t el : value_) {
+        ans += transform ? transform(static_cast<int64_t>(el)) : static_cast<int64_t>(el);
+    }
+    return ans;
+}
+
+int64_t Int16::GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (uint64_t id : mask) {
+        ans += transform ? transform(static_cast<int64_t>(value_[id])) : static_cast<int64_t>(value_[id]);
+    }
+    return ans;
+}
+
 CellTypes Int16::GetMin() const {
     return static_cast<int64_t>(*std::min_element(value_.begin(), value_.end()));
 }
@@ -508,6 +525,22 @@ std::vector<std::string> Int32::GetColumnAsString() const {
 
 int64_t Int32::GetRowCount(const std::vector<uint64_t>& mask) const {
     return mask.size();
+}
+
+int64_t Int32::GetSum(const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (int32_t el : value_) {
+        ans += transform ? transform(static_cast<int64_t>(el)) : static_cast<int64_t>(el);
+    }
+    return ans;
+}
+
+int64_t Int32::GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (uint64_t id : mask) {
+        ans += transform ? transform(static_cast<int64_t>(value_[id])) : static_cast<int64_t>(value_[id]);
+    }
+    return ans;
 }
 
 CellTypes Int32::GetMin() const {
@@ -1096,6 +1129,22 @@ int64_t Date::GetRowCount(const std::vector<uint64_t>& mask) const {
     return mask.size();
 }
 
+int64_t Date::GetSum(const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (uint32_t el : value_) {
+        ans += transform ? transform(static_cast<int64_t>(el)) : static_cast<int64_t>(el);
+    }
+    return ans;
+}
+
+int64_t Date::GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (uint64_t id : mask) {
+        ans += transform ? transform(static_cast<int64_t>(value_[id])) : static_cast<int64_t>(value_[id]);
+    }
+    return ans;
+}
+
 CellTypes Date::GetMin() const {
     auto it = std::min_element(value_.begin(), value_.end());
     return FormatDate(*it);
@@ -1229,6 +1278,22 @@ std::vector<std::string> Timestamp::GetColumnAsString() const {
 
 int64_t Timestamp::GetRowCount(const std::vector<uint64_t>& mask) const {
     return mask.size();
+}
+
+int64_t Timestamp::GetSum(const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (uint32_t el : value_) {
+        ans += transform ? transform(static_cast<int64_t>(el)) : static_cast<int64_t>(el);
+    }
+    return ans;
+}
+
+int64_t Timestamp::GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform) const {
+    int64_t ans = 0;
+    for (uint64_t id : mask) {
+        ans += transform ? transform(static_cast<int64_t>(value_[id])) : static_cast<int64_t>(value_[id]);
+    }
+    return ans;
 }
 
 CellTypes Timestamp::GetMin() const {

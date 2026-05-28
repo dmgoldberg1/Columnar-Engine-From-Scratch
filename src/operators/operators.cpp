@@ -207,15 +207,27 @@ std::vector<int> FilterOperator::GetCurrColIds() const {
 }
 
 void SumIntAccumulator::Update(const Column* column) {
+    auto transform = [this](int64_t value) -> int64_t {
+        return std::get<int64_t>(transform_.Apply(value));
+    };
+    if (const auto* int16_column = dynamic_cast<const Int16*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? int16_column->GetSum(transform) : int16_column->GetSum());
+        return;
+    }
+    if (const auto* int32_column = dynamic_cast<const Int32*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? int32_column->GetSum(transform) : int32_column->GetSum());
+        return;
+    }
     if (const auto* int_column = dynamic_cast<const Int64*>(column)) {
-        if (!transform_.HasValue()) {
-            sum_ += static_cast<__int128_t>(int_column->GetSum());
-            return;
-        }
-        auto transform = [this](int64_t value) -> int64_t {
-            return std::get<int64_t>(transform_.Apply(value));
-        };
-        sum_ += static_cast<__int128_t>(int_column->GetSum(transform));
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? int_column->GetSum(transform) : int_column->GetSum());
+        return;
+    }
+    if (const auto* date_column = dynamic_cast<const Date*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? date_column->GetSum(transform) : date_column->GetSum());
+        return;
+    }
+    if (const auto* timestamp_column = dynamic_cast<const Timestamp*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? timestamp_column->GetSum(transform) : timestamp_column->GetSum());
         return;
     }
     int64_t row_count = column->GetRowCount();
@@ -226,15 +238,27 @@ void SumIntAccumulator::Update(const Column* column) {
 }
 
 void SumIntAccumulator::Update(const Column* column, const std::vector<uint64_t>& mask) {
+    auto transform = [this](int64_t value) -> int64_t {
+        return std::get<int64_t>(transform_.Apply(value));
+    };
+    if (const auto* int16_column = dynamic_cast<const Int16*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? int16_column->GetSum(mask, transform) : int16_column->GetSum(mask));
+        return;
+    }
+    if (const auto* int32_column = dynamic_cast<const Int32*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? int32_column->GetSum(mask, transform) : int32_column->GetSum(mask));
+        return;
+    }
     if (const auto* int_column = dynamic_cast<const Int64*>(column)) {
-        if (!transform_.HasValue()) {
-            sum_ += static_cast<__int128_t>(int_column->GetSum(mask));
-            return;
-        }
-        auto transform = [this](int64_t value) -> int64_t {
-            return std::get<int64_t>(transform_.Apply(value));
-        };
-        sum_ += static_cast<__int128_t>(int_column->GetSum(mask, transform));
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? int_column->GetSum(mask, transform) : int_column->GetSum(mask));
+        return;
+    }
+    if (const auto* date_column = dynamic_cast<const Date*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? date_column->GetSum(mask, transform) : date_column->GetSum(mask));
+        return;
+    }
+    if (const auto* timestamp_column = dynamic_cast<const Timestamp*>(column)) {
+        sum_ += static_cast<__int128_t>(transform_.HasValue() ? timestamp_column->GetSum(mask, transform) : timestamp_column->GetSum(mask));
         return;
     }
     for (uint64_t row_id : mask) {

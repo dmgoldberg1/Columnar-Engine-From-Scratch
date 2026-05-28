@@ -58,6 +58,8 @@ public:
     std::vector<std::string> GetColumnAsString() const override;
     int64_t GetRowCount() const override { return value_.size(); }
     int64_t GetRowCount(const std::vector<uint64_t>& mask) const override;
+    int64_t GetSum(const std::function<int64_t(int64_t)>& transform = {}) const;
+    int64_t GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform = {}) const;
     CellTypes GetMin() const override;
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMax() const override;
@@ -94,6 +96,8 @@ public:
     std::vector<std::string> GetColumnAsString() const override;
     int64_t GetRowCount() const override { return value_.size(); }
     int64_t GetRowCount(const std::vector<uint64_t>& mask) const override;
+    int64_t GetSum(const std::function<int64_t(int64_t)>& transform = {}) const;
+    int64_t GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform = {}) const;
     CellTypes GetMin() const override;
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMax() const override;
@@ -254,6 +258,8 @@ public:
     std::vector<std::string> GetColumnAsString() const override;
     int64_t GetRowCount() const override { return value_.size(); }
     int64_t GetRowCount(const std::vector<uint64_t>& mask) const override;
+    int64_t GetSum(const std::function<int64_t(int64_t)>& transform = {}) const;
+    int64_t GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform = {}) const;
     CellTypes GetMin() const override;
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMax() const override;
@@ -292,6 +298,8 @@ public:
     std::vector<std::string> GetColumnAsString() const override;
     int64_t GetRowCount() const override { return value_.size(); }
     int64_t GetRowCount(const std::vector<uint64_t>& mask) const override;
+    int64_t GetSum(const std::function<int64_t(int64_t)>& transform = {}) const;
+    int64_t GetSum(const std::vector<uint64_t>& mask, const std::function<int64_t(int64_t)>& transform = {}) const;
     CellTypes GetMin() const override;
     CellTypes GetMin(const std::vector<uint64_t>& mask) const override;
     CellTypes GetMax() const override;
