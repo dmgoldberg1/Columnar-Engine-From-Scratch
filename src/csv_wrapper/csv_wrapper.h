@@ -1,0 +1,33 @@
+#pragma once
+
+#include "../utilities/utilities.h"
+#include "../scheme/scheme.h"
+
+
+#include <istream>
+#include <memory>
+#include <vector>
+#include <string>
+#include <filesystem>
+
+class CSVWrapper {
+public:
+    CSVWrapper(const char* input_path);
+    CSVWrapper(const CSVWrapper& other) = delete;
+    CSVWrapper(CSVWrapper&& reader);
+    CSVWrapper operator=(const CSVWrapper& reader) = delete;
+    CSVWrapper& operator=(CSVWrapper&& reader);
+    std::vector<std::string> GetNextLineAndSplitIntoTokens();
+    bool IsEnd() const;
+    void Close();
+    size_t GetColumnNum() const;
+    uint64_t GetReadPosition() const;
+    uint64_t GetFileSize() const;
+    void SetScheme(Scheme& scheme, const std::vector<int64_t>& types, const std::vector<std::string>& column_names = {});
+    ~CSVWrapper();
+
+
+protected:
+    class Impl;
+    std::unique_ptr<Impl> impl_;
+};
