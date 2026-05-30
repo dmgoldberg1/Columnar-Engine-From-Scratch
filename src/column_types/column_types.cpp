@@ -13,10 +13,16 @@
 namespace {
 
 
+enum class Int64Encoding : uint8_t {
+    MinBitPacked = 0,
+    Raw = 1,
+};
+
 enum class StringEncoding : uint8_t {
     Dictionary = 0,
     DeltaLengthByteArray = 1,
 };
+
 
 template <typename T>
 void AppendBytes(std::vector<uint8_t>& output, const T& value) {
@@ -32,6 +38,45 @@ T ReadBytes(const uint8_t*& ptr) {
     return value;
 }
 
+uint8_t GetBitWidth(uint64_t value) {
+    if (value == 0) {
+        return 0;
+    }
+    return static_cast<uint8_t>(64 - std::countl_zero(value));
+}
+
+bool ShouldUseRawInt64Encoding(const std::vector<int64_t>& values) {
+    if (values.empty()) {
+        return false;
+    }
+    int64_t min_value = *std::min_element(values.begin(), values.end());
+    uint64_t max_offset = 0;
+    for (int64_t value : values) {
+        uint64_t offset = static_cast<uint64_t>(static_cast<__int128>(value) - static_cast<__int128>(min_value));
+        max_offset = std::max(max_offset, offset);
+    }
+    return GetBitWidth(max_offset) == 64;
+}
+
+std::vector<uint8_t> EncodeInt64Raw(const std::vector<int64_t>& values) {
+    std::vector<uint8_t> output;
+    output.reserve(sizeof(uint32_t) + values.size() * sizeof(int64_t));
+    AppendBytes<uint32_t>(output, static_cast<uint32_t>(values.size()));
+    for (int64_t value : values) {
+        AppendBytes<int64_t>(output, value);
+    }
+    return output;
+}
+
+void DecodeInt64Raw(const std::vector<uint8_t>& data, std::vector<int64_t>& values) {
+    const uint8_t* ptr = data.data();
+    uint32_t count = ReadBytes<uint32_t>(ptr);
+    values.resize(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        values[i] = ReadBytes<int64_t>(ptr);
+    }
+}
+
 uint64_t ZigZagEncode(int64_t value) {
     return (static_cast<uint64_t>(value) << 1) ^ static_cast<uint64_t>(value >> 63);
 }
@@ -40,16 +85,16 @@ int64_t ZigZagDecode(uint64_t value) {
     return static_cast<int64_t>((value >> 1) ^ (~(value & 1) + 1));
 }
 
-uint8_t GetBitWidth(uint64_t value) {
-    if (value == 0) {
-        return 0;
-    }
-    return static_cast<uint8_t>(64 - std::countl_zero(value));
-}
-
 std::vector<uint8_t> BitPack(const std::vector<uint64_t>& values, uint8_t bit_width) {
     std::vector<uint8_t> output;
     if (bit_width == 0 || values.empty()) {
+        return output;
+    }
+    if (bit_width == 64) {
+        output.reserve(values.size() * sizeof(uint64_t));
+        for (uint64_t value : values) {
+            AppendBytes<uint64_t>(output, value);
+        }
         return output;
     }
     output.reserve((values.size() * bit_width + 7) / 8);
@@ -75,9 +120,15 @@ std::vector<uint64_t> BitUnpack(const uint8_t*& ptr, size_t count, uint8_t bit_w
     if (bit_width == 0 || count == 0) {
         return output;
     }
+    if (bit_width == 64) {
+        for (size_t i = 0; i < count; ++i) {
+            output[i] = ReadBytes<uint64_t>(ptr);
+        }
+        return output;
+    }
     uint64_t buffer = 0;
     uint8_t bits_in_buffer = 0;
-    const uint64_t mask = bit_width == 64 ? std::numeric_limits<uint64_t>::max() : ((1ULL << bit_width) - 1);
+    const uint64_t mask = (1ULL << bit_width) - 1;
     for (size_t i = 0; i < count; ++i) {
         while (bits_in_buffer < bit_width) {
             buffer |= (static_cast<uint64_t>(*ptr++) << bits_in_buffer);
@@ -104,7 +155,7 @@ std::vector<uint8_t> EncodeMinBitPacked(const std::vector<T>& values) {
     offsets.reserve(values.size());
     uint64_t max_offset = 0;
     for (T value : values) {
-        uint64_t offset = static_cast<uint64_t>(static_cast<int64_t>(value) - min_value);
+        uint64_t offset = static_cast<uint64_t>(static_cast<__int128>(static_cast<int64_t>(value)) - static_cast<__int128>(min_value));
         offsets.push_back(offset);
         max_offset = std::max(max_offset, offset);
     }
@@ -127,7 +178,8 @@ void DecodeMinBitPacked(const std::vector<uint8_t>& data, std::vector<T>& values
     uint8_t bit_width = *ptr++;
     std::vector<uint64_t> offsets = BitUnpack(ptr, count, bit_width);
     for (uint32_t i = 0; i < count; ++i) {
-        values[i] = static_cast<T>(min_value + static_cast<int64_t>(offsets[i]));
+        __int128 restored = static_cast<__int128>(min_value) + static_cast<__int128>(offsets[i]);
+        values[i] = static_cast<T>(restored);
     }
 }
 
@@ -621,11 +673,31 @@ void Int32::SetData(const std::vector<uint8_t>& data) {
 }
 
 std::vector<uint8_t> Int64::Encode() const {
-    return EncodeDeltaBitPacked(value_);
+    std::vector<uint8_t> output;
+    if (ShouldUseRawInt64Encoding(value_)) {
+        output.push_back(static_cast<uint8_t>(Int64Encoding::Raw));
+        std::vector<uint8_t> payload = EncodeInt64Raw(value_);
+        output.insert(output.end(), payload.begin(), payload.end());
+    } else {
+        output.push_back(static_cast<uint8_t>(Int64Encoding::MinBitPacked));
+        std::vector<uint8_t> payload = EncodeMinBitPacked(value_);
+        output.insert(output.end(), payload.begin(), payload.end());
+    }
+    return output;
 }
 
 void Int64::Decode(const std::vector<uint8_t>& data) {
-    DecodeDeltaBitPacked(data, value_);
+    if (data.empty()) {
+        value_.clear();
+        return;
+    }
+    Int64Encoding encoding = static_cast<Int64Encoding>(data[0]);
+    std::vector<uint8_t> payload(data.begin() + 1, data.end());
+    if (encoding == Int64Encoding::Raw) {
+        DecodeInt64Raw(payload, value_);
+    } else {
+        DecodeMinBitPacked(payload, value_);
+    }
 }
 
 void Int64::AddCell(const std::string& cell) {

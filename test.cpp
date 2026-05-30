@@ -184,6 +184,18 @@ TEST(CompressionTest, Ints) {
     EXPECT_EQ(int64_col.GetColumnAsString(), int64_decoded.GetColumnAsString());
 }
 
+TEST(CompressionTest, Int64LargeValues) {
+    Int64 int64_col;
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(3594120000172545465LL)));
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(2868770270353813622LL)));
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(-9223372036854775000LL)));
+    int64_col.AddCell(CellTypes(static_cast<int64_t>(9223372036854775000LL)));
+    std::vector<uint8_t> int64_encoded = int64_col.Encode();
+    Int64 int64_decoded;
+    int64_decoded.Decode(int64_encoded);
+    EXPECT_EQ(int64_col.GetColumnAsString(), int64_decoded.GetColumnAsString());
+}
+
 TEST(CompressionTest, DoubleDateTimestamp) {
     Double double_col;
     double_col.AddCell(CellTypes(1.5));
