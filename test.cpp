@@ -6,12 +6,16 @@
 #include "src/file_reader/file_reader.h"
 #include "src/scheme/scheme.h"
 #include "src/operators/operators.h"
+#include "src/benchmark/benchmark_service.h"
+#include "src/benchmark/clickbench_dataset.h"
+#include "src/benchmark/clickbench_queries.h"
 
 #include <filesystem>
 #include <sstream>
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <stdexcept>
 
 bool CompareVec(const std::vector<std::string>& actual, 
                     const std::vector<std::string>& expected) {
@@ -87,6 +91,158 @@ std::vector<int64_t> GetGeneratedCsvTypes() {
         static_cast<int64_t>(Types::TypeInt64),
         static_cast<int64_t>(Types::TypeString)
     };
+}
+
+TEST(ClickBenchApplicationTest, RunsQuery1) {
+    const char* input_csv_file = "query1_test.csv";
+    const char* input_db_file = "query1_test.egg";
+    {
+        std::ofstream out(input_csv_file);
+        out << "WatchID\n"
+            << "10\n"
+            << "20\n"
+            << "30";
+    }
+
+    Scheme scheme;
+    CSVWrapper parser(input_csv_file);
+    parser.SetScheme(
+        scheme,
+        {static_cast<int64_t>(Types::TypeInt64)}
+    );
+    std::ofstream output(input_db_file, std::ios::binary | std::ios::trunc);
+    RowGroupWriter writer(std::move(parser), output, scheme);
+    writer.WriteAll();
+    output.close();
+
+    benchmark_app::QueryExecutionResult result =
+        benchmark_app::RunClickBenchQuery(1, input_db_file);
+
+    ASSERT_EQ(result.query_id, 1);
+    ASSERT_EQ(result.columns, std::vector<std::string>{"count"});
+    ASSERT_EQ(result.rows, std::vector<std::vector<std::string>>{{"3"}});
+    ASSERT_GE(result.execution_time.count(), 0);
+
+    std::remove(input_csv_file);
+    std::remove(input_db_file);
+}
+
+TEST(ClickBenchApplicationTest, RejectsUnsupportedQuery) {
+    EXPECT_THROW(
+        benchmark_app::RunClickBenchQuery(2, "unused.egg"),
+        std::invalid_argument
+    );
+}
+
+TEST(ClickBenchApplicationTest, LoadsSampleDataset) {
+    const std::filesystem::path source_csv_file = "../hits_sample.csv";
+    const std::filesystem::path output_db_file = "clickbench_sample_test.egg";
+    {
+        std::ofstream previous_dataset(output_db_file);
+        previous_dataset << "previous dataset";
+    }
+
+    benchmark_app::DatasetLoadResult load_result =
+        benchmark_app::LoadClickBenchDataset(source_csv_file, output_db_file);
+
+    ASSERT_EQ(load_result.dataset_path, output_db_file);
+    ASSERT_EQ(load_result.source_size_bytes, std::filesystem::file_size(source_csv_file));
+    ASSERT_EQ(load_result.dataset_size_bytes, std::filesystem::file_size(output_db_file));
+    ASSERT_GT(load_result.dataset_size_bytes, 0);
+
+    benchmark_app::QueryExecutionResult query_result =
+        benchmark_app::RunClickBenchQuery(1, output_db_file);
+    ASSERT_EQ(query_result.rows, std::vector<std::vector<std::string>>{{"1000"}});
+
+    std::remove(output_db_file.c_str());
+}
+
+TEST(ClickBenchApplicationTest, RejectsMissingSourceDataset) {
+    EXPECT_THROW(
+        benchmark_app::LoadClickBenchDataset("missing.csv", "unused.egg"),
+        std::runtime_error
+    );
+}
+
+TEST(ClickBenchApplicationTest, KeepsActiveDatasetWhenConversionFails) {
+    const std::filesystem::path source_csv_file = "invalid_clickbench_test.csv";
+    const std::filesystem::path active_db_file = "active_clickbench_test.egg";
+
+    std::ifstream valid_source("../hits_sample.csv");
+    std::string invalid_row;
+    ASSERT_TRUE(std::getline(valid_source, invalid_row));
+    const size_t first_separator = invalid_row.find(',');
+    ASSERT_NE(first_separator, std::string::npos);
+    invalid_row.replace(0, first_separator, "not-an-integer");
+    {
+        std::ofstream invalid_source(source_csv_file);
+        invalid_source << invalid_row;
+    }
+    {
+        std::ofstream active_dataset(active_db_file);
+        active_dataset << "known active dataset";
+    }
+
+    EXPECT_THROW(
+        benchmark_app::LoadClickBenchDataset(source_csv_file, active_db_file),
+        std::exception
+    );
+
+    std::ifstream active_dataset(active_db_file);
+    std::string active_contents;
+    std::getline(active_dataset, active_contents);
+    EXPECT_EQ(active_contents, "known active dataset");
+
+    const std::string temporary_prefix = active_db_file.string() + ".tmp.";
+    for (const auto& entry : std::filesystem::directory_iterator(".")) {
+        EXPECT_FALSE(entry.path().filename().string().starts_with(temporary_prefix));
+    }
+
+    std::remove(source_csv_file.c_str());
+    std::remove(active_db_file.c_str());
+}
+
+TEST(BenchmarkServiceTest, LoadsDatasetAndRunsQuery) {
+    const std::filesystem::path data_directory = "benchmark_service_test_data";
+    const std::filesystem::path source_csv_file = data_directory / "hits.csv";
+    std::filesystem::create_directories(data_directory);
+    std::filesystem::copy_file(
+        "../hits_sample.csv",
+        source_csv_file,
+        std::filesystem::copy_options::overwrite_existing
+    );
+
+    benchmark_app::BenchmarkService service(data_directory);
+    ASSERT_FALSE(service.GetStatus().dataset_loaded);
+
+    benchmark_app::DatasetLoadResult load_result = service.LoadDataset("hits.csv");
+    ASSERT_TRUE(service.GetStatus().dataset_loaded);
+    ASSERT_EQ(load_result.dataset_path, service.GetStatus().active_dataset_path);
+
+    benchmark_app::QueryExecutionResult query_result = service.RunQuery(1);
+    ASSERT_EQ(query_result.rows, std::vector<std::vector<std::string>>{{"1000"}});
+
+    std::filesystem::remove_all(data_directory);
+}
+
+TEST(BenchmarkServiceTest, RejectsQueryWithoutActiveDataset) {
+    const std::filesystem::path data_directory = "empty_benchmark_service_test_data";
+    std::filesystem::remove_all(data_directory);
+    benchmark_app::BenchmarkService service(data_directory);
+
+    EXPECT_THROW(service.RunQuery(1), benchmark_app::DatasetNotLoadedError);
+
+    std::filesystem::remove_all(data_directory);
+}
+
+TEST(BenchmarkServiceTest, RejectsSourceOutsideDataDirectory) {
+    const std::filesystem::path data_directory = "contained_benchmark_service_test_data";
+    benchmark_app::BenchmarkService service(data_directory);
+
+    EXPECT_THROW(service.LoadDataset("../hits_sample.csv"), std::invalid_argument);
+    EXPECT_THROW(service.LoadDataset(std::filesystem::absolute("../hits_sample.csv")), std::invalid_argument);
+
+    std::filesystem::remove_all(data_directory);
 }
 
 
