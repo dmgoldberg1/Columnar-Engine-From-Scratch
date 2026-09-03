@@ -308,11 +308,13 @@ p50, p95 и p99. Метрики самого `GET /metrics` в HTTP-статис
 их историю. Prometheus каждые 5 секунд опрашивает endpoint и сохраняет полученные
 значения с отметкой времени во встроенной базе временных рядов.
 
-Docker Compose читает [`compose.yaml`](compose.yaml) и совместно запускает два
+Docker Compose читает [`compose.yaml`](compose.yaml) и совместно запускает три
 сервиса:
 
 - `benchmark-service` собирается из текущего `Dockerfile`;
-- `prometheus` запускается из готового image `prom/prometheus:v3.13.1`.
+- `prometheus` запускается из готового image `prom/prometheus:v3.13.1`;
+- `grafana` запускается из image `grafana/grafana:13.2.0` и отображает данные
+  Prometheus.
 
 Compose создаёт для них общую Docker-сеть и внутренний DNS. Поэтому Prometheus
 обращается к приложению по адресу `benchmark-service:8080`. Адрес
@@ -332,6 +334,13 @@ Prometheus, а не на benchmark-сервис.
 сохраняется после обычного `docker compose down`; параметр `--volumes` удалит
 его вместе с накопленной историей.
 
+Grafana автоматически получает Prometheus как источник данных из файла
+[`monitoring/grafana/provisioning/datasources/prometheus.yml`](monitoring/grafana/provisioning/datasources/prometheus.yml).
+Адрес `http://prometheus:9090` работает во внутренней сети Compose. Режим
+`proxy` означает, что запрос к Prometheus отправляет сервер Grafana, а не
+браузер пользователя. Настройки и созданные через UI объекты сохраняются в
+volume `grafana-data`.
+
 ### Запуск стенда
 
 Сначала подготовить тестовый датасет:
@@ -341,10 +350,11 @@ mkdir -p datasets
 cp hits_sample.csv datasets/hits.csv
 ```
 
-Затем собрать benchmark-сервис и запустить оба контейнера:
+Затем собрать benchmark-сервис и запустить три контейнера:
 
 ```bash
 BENCHMARK_UID="$(id -u)" BENCHMARK_GID="$(id -g)" \
+GRAFANA_ADMIN_PASSWORD=admin \
   docker compose up --build
 ```
 
@@ -356,7 +366,13 @@ UID и GID — числовые идентификаторы текущего Li
 
 - Benchmark API: `http://127.0.0.1:8080`;
 - интерфейс Prometheus: `http://127.0.0.1:9090`;
-- состояние сбора: `http://127.0.0.1:9090/targets`.
+- состояние сбора: `http://127.0.0.1:9090/targets`;
+- интерфейс Grafana: `http://127.0.0.1:3000`.
+
+Для учебного локального запуска логин Grafana — `admin`, пароль передаётся через
+`GRAFANA_ADMIN_PASSWORD`. На VM следует задать собственный пароль. Это значение
+применяется при первом создании `grafana-data`; позднее пароль меняется через
+Grafana или сбросом её volume.
 
 На странице Query в Prometheus можно выполнить PromQL-запрос. Например,
 скорость HTTP-запросов за последнюю минуту:
@@ -475,12 +491,17 @@ docker inspect --format '{{.State.Health.Status}}' columnar-benchmark
 ```bash
 VM_USER="your-vm-user"
 VM_PUBLIC_IP="your-vm-public-ip"
-ssh -N -L 18080:127.0.0.1:8080 "${VM_USER}@${VM_PUBLIC_IP}"
+ssh -N \
+  -L 18080:127.0.0.1:8080 \
+  -L 19090:127.0.0.1:9090 \
+  -L 13000:127.0.0.1:3000 \
+  "${VM_USER}@${VM_PUBLIC_IP}"
 ```
 
 SSH-туннель — зашифрованное перенаправление TCP-соединения. Пока команда
 работает, запрос к локальному порту `18080` проходит через SSH на локальный порт
-`8080` виртуальной машины:
+`8080` виртуальной машины. Дополнительные туннели открывают Prometheus на
+`http://127.0.0.1:19090` и Grafana на `http://127.0.0.1:13000`:
 
 ```text
 local computer: 127.0.0.1:18080
@@ -534,11 +555,12 @@ docker rm columnar-benchmark
 - cpp-httplib;
 - nlohmann/json;
 - prometheus-cpp;
+- Prometheus;
+- Grafana;
 - GoogleTest;
 - Docker.
 
 ## Следующие этапы
 
-После проверки накопления временных рядов в Prometheus следующим этапом станет
-Grafana: она будет запрашивать данные из Prometheus и отображать их на постоянном
-dashboard с графиками Four Golden Signals.
+Следующий этап — добавить автоматически создаваемый dashboard Grafana с
+графиками Four Golden Signals: Traffic, Errors, Latency и Saturation.

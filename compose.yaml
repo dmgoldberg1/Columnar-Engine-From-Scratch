@@ -33,5 +33,23 @@ services:
         source: prometheus-data
         target: /prometheus
 
+  grafana:
+    image: grafana/grafana:13.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - type: bind
+        source: ./monitoring/grafana/provisioning/datasources/prometheus.yml
+        target: /etc/grafana/provisioning/datasources/prometheus.yml
+        read_only: true
+      - type: volume
+        source: grafana-data
+        target: /var/lib/grafana
+
 volumes:
   prometheus-data:
+  grafana-data:
