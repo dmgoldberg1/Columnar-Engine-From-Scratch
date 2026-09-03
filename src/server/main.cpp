@@ -1,6 +1,7 @@
 #include "benchmark_http_server.h"
 
 #include "../benchmark/benchmark_service.h"
+#include "../metrics/benchmark_metrics.h"
 
 #include <pthread.h>
 #include <signal.h>
@@ -70,8 +71,9 @@ int main() {
             GetEnvironmentVariable("BENCHMARK_DATA_DIR", "./data");
         sigset_t shutdown_signals = BlockShutdownSignals();
 
+        benchmark_observability::BenchmarkMetrics metrics;
         benchmark_app::BenchmarkService benchmark_service(data_directory);
-        benchmark_http::BenchmarkHttpServer http_server(benchmark_service);
+        benchmark_http::BenchmarkHttpServer http_server(benchmark_service, metrics);
 
         if (!http_server.BindToPort(host, port)) {
             std::cerr << "Failed to bind to " << host << ':' << port << '\n';

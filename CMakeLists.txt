@@ -76,6 +76,37 @@ set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
 set(HTTPLIB_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(cpp_httplib)
 
+FetchContent_Declare(
+  prometheus_cpp
+  URL https://github.com/jupp0r/prometheus-cpp/archive/refs/tags/v1.3.0.tar.gz
+  URL_HASH SHA256=ac6e958405a29fbbea9db70b00fa3c420e16ad32e1baf941ab233ba031dd72ee
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+set(ENABLE_PULL OFF CACHE BOOL "" FORCE)
+set(ENABLE_PUSH OFF CACHE BOOL "" FORCE)
+set(ENABLE_COMPRESSION OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(USE_THIRDPARTY_LIBRARIES OFF CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_STANDARD_FLAGS OFF CACHE BOOL "" FORCE)
+set(GENERATE_PKGCONFIG OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(prometheus_cpp)
+
+add_library(
+  benchmark_metrics
+  STATIC
+  src/metrics/benchmark_metrics.cpp
+)
+target_include_directories(
+  benchmark_metrics
+  PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(
+  benchmark_metrics
+  PUBLIC
+  prometheus-cpp::core
+)
+
 add_executable(
   benchmark-service
   src/server/benchmark_http_server.cpp
@@ -85,6 +116,7 @@ target_link_libraries(
   benchmark-service
   PRIVATE
   benchmark_application
+  benchmark_metrics
   httplib::httplib
   nlohmann_json::nlohmann_json
   Threads::Threads
@@ -114,6 +146,7 @@ if(BUILD_TESTING)
     tests
     PRIVATE
     benchmark_application
+    benchmark_metrics
     GTest::gtest_main
   )
   target_link_libraries(

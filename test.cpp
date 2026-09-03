@@ -9,7 +9,9 @@
 #include "src/benchmark/benchmark_service.h"
 #include "src/benchmark/clickbench_dataset.h"
 #include "src/benchmark/clickbench_queries.h"
+#include "src/metrics/benchmark_metrics.h"
 
+#include <chrono>
 #include <filesystem>
 #include <sstream>
 #include <fstream>
@@ -243,6 +245,72 @@ TEST(BenchmarkServiceTest, RejectsSourceOutsideDataDirectory) {
     EXPECT_THROW(service.LoadDataset(std::filesystem::absolute("../hits_sample.csv")), std::invalid_argument);
 
     std::filesystem::remove_all(data_directory);
+}
+
+TEST(BenchmarkMetricsTest, RecordsTrafficErrorsAndLatency) {
+    benchmark_observability::BenchmarkMetrics metrics;
+    metrics.HttpRequestStarted();
+    metrics.HttpRequestFinished(
+        benchmark_observability::HttpRoute::Query,
+        500,
+        std::chrono::milliseconds(250)
+    );
+
+    const std::string serialized = metrics.Serialize();
+
+    EXPECT_NE(
+        serialized.find("# TYPE columnar_benchmark_http_requests_total counter"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        serialized.find(
+            "columnar_benchmark_http_requests_total{outcome=\"server_error\","
+            "route=\"/queries/:id/run\"} 1"
+        ),
+        std::string::npos
+    );
+    EXPECT_NE(
+        serialized.find(
+            "columnar_benchmark_http_request_duration_seconds_count{"
+            "route=\"/queries/:id/run\"} 1"
+        ),
+        std::string::npos
+    );
+}
+
+TEST(BenchmarkMetricsTest, ExposesHttpSaturation) {
+    benchmark_observability::BenchmarkMetrics metrics;
+    metrics.SetHttpWorkerLimit(32);
+    metrics.HttpRequestStarted();
+    metrics.HttpRequestStarted();
+
+    EXPECT_NE(
+        metrics.Serialize().find(
+            "columnar_benchmark_http_requests_in_progress 2"
+        ),
+        std::string::npos
+    );
+    EXPECT_NE(
+        metrics.Serialize().find("columnar_benchmark_http_worker_limit 32"),
+        std::string::npos
+    );
+
+    metrics.HttpRequestFinished(
+        benchmark_observability::HttpRoute::Health,
+        200,
+        std::chrono::milliseconds(1)
+    );
+    metrics.HttpRequestFinished(
+        benchmark_observability::HttpRoute::DatasetLoad,
+        400,
+        std::chrono::milliseconds(1)
+    );
+    EXPECT_NE(
+        metrics.Serialize().find(
+            "columnar_benchmark_http_requests_in_progress 0"
+        ),
+        std::string::npos
+    );
 }
 
 

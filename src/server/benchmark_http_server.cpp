@@ -18,6 +18,25 @@ namespace {
 using Json = nlohmann::json;
 
 constexpr std::size_t kMaxRequestBodyBytes = 16 * 1024;
+constexpr std::string_view kMetricsPath = "/metrics";
+constexpr std::string_view kRequestObservationKey = "benchmark_request_observation";
+
+struct HttpRequestObservation {
+    std::chrono::steady_clock::time_point started_at;
+};
+
+benchmark_observability::HttpRoute GetHttpRoute(std::string_view matched_route) {
+    if (matched_route == "/health") {
+        return benchmark_observability::HttpRoute::Health;
+    }
+    if (matched_route == "/data/load") {
+        return benchmark_observability::HttpRoute::DatasetLoad;
+    }
+    if (matched_route == "/queries/:id/run") {
+        return benchmark_observability::HttpRoute::Query;
+    }
+    return benchmark_observability::HttpRoute::Unmatched;
+}
 
 void SetJsonResponse(
     httplib::Response& response,
@@ -56,9 +75,10 @@ bool TryParseQueryId(std::string_view value, int& query_id) {
 } // namespace
 
 BenchmarkHttpServer::BenchmarkHttpServer(
-    benchmark_app::BenchmarkService& benchmark_service
+    benchmark_app::BenchmarkService& benchmark_service,
+    benchmark_observability::BenchmarkMetrics& metrics
 )
-    : benchmark_service_(benchmark_service) {
+    : benchmark_service_(benchmark_service), metrics_(metrics) {
     server_.set_socket_options([](socket_t socket) {
 #ifdef SO_REUSEPORT
         httplib::set_socket_opt(socket, SOL_SOCKET, SO_REUSEPORT, 0);
@@ -66,9 +86,55 @@ BenchmarkHttpServer::BenchmarkHttpServer(
         httplib::set_socket_opt(socket, SOL_SOCKET, SO_REUSEADDR, 1);
     });
     server_.set_payload_max_length(kMaxRequestBodyBytes);
+    metrics_.SetHttpWorkerLimit(CPPHTTPLIB_THREAD_POOL_MAX_COUNT);
+    server_.set_pre_routing_handler(
+        [this](const httplib::Request& request, httplib::Response& response) {
+            if (request.path == kMetricsPath) {
+                return httplib::Server::HandlerResponse::Unhandled;
+            }
+
+            metrics_.HttpRequestStarted();
+            response.user_data.set(
+                std::string(kRequestObservationKey),
+                HttpRequestObservation{std::chrono::steady_clock::now()}
+            );
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+    );
+    server_.set_post_routing_handler(
+        [this](const httplib::Request& request, httplib::Response& response) {
+            const HttpRequestObservation* observation =
+                response.user_data.get<HttpRequestObservation>(
+                    std::string(kRequestObservationKey)
+                );
+            if (observation == nullptr) {
+                return;
+            }
+
+            const auto duration =
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - observation->started_at
+                );
+            metrics_.HttpRequestFinished(
+                GetHttpRoute(request.matched_route),
+                response.status,
+                duration
+            );
+        }
+    );
     RegisterHealthRoute();
+    RegisterMetricsRoute();
     RegisterDatasetRoutes();
     RegisterQueryRoutes();
+}
+
+void BenchmarkHttpServer::RegisterMetricsRoute() {
+    server_.Get("/metrics", [this](const httplib::Request&, httplib::Response& response) {
+        response.set_content(
+            metrics_.Serialize(),
+            "text/plain; version=0.0.4; charset=utf-8"
+        );
+    });
 }
 
 void BenchmarkHttpServer::RegisterHealthRoute() {

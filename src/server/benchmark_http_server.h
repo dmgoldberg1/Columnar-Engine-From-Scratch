@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../benchmark/benchmark_service.h"
+#include "../metrics/benchmark_metrics.h"
 
 #include <httplib.h>
 
@@ -10,7 +11,10 @@ namespace benchmark_http {
 
 class BenchmarkHttpServer {
 public:
-    explicit BenchmarkHttpServer(benchmark_app::BenchmarkService& benchmark_service);
+    BenchmarkHttpServer(
+        benchmark_app::BenchmarkService& benchmark_service,
+        benchmark_observability::BenchmarkMetrics& metrics
+    );
 
     bool BindToPort(const std::string& host, int port);
     bool ListenAfterBind();
@@ -19,10 +23,12 @@ public:
 
 private:
     void RegisterHealthRoute();
+    void RegisterMetricsRoute();
     void RegisterDatasetRoutes();
     void RegisterQueryRoutes();
 
     benchmark_app::BenchmarkService& benchmark_service_;
+    benchmark_observability::BenchmarkMetrics& metrics_;
     httplib::Server server_;
 };
 
