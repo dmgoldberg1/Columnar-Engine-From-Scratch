@@ -158,5 +158,6 @@ if(BUILD_TESTING)
 
   include(GoogleTest)
   gtest_discover_tests(tests)
-  gtest_discover_tests(benchmark)
+  # benchmark_test.cpp depends on an external ClickBench dataset and is a
+  # manually executed benchmark scenario, not a self-contained CTest suite.
 endif()

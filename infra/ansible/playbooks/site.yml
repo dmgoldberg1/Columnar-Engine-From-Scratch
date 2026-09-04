@@ -1,0 +1,9 @@
+---
+- name: Prepare the benchmark VM
+  ansible.builtin.import_playbook: bootstrap.yml
+
+- name: Deploy the published benchmark release
+  ansible.builtin.import_playbook: deploy.yml
+
+- name: Verify the deployed benchmark stack
+  ansible.builtin.import_playbook: smoke.yml

@@ -1,0 +1,15 @@
+---
+- name: Verify access to the benchmark VM
+  hosts: benchmark
+  gather_facts: true
+
+  tasks:
+    - name: Confirm that Ansible can execute a Python module
+      ansible.builtin.ping:
+
+    - name: Show the detected operating system
+      ansible.builtin.debug:
+        msg: >-
+          Connected to {{ inventory_hostname }} running
+          {{ ansible_facts['distribution'] }}
+          {{ ansible_facts['distribution_version'] }}.

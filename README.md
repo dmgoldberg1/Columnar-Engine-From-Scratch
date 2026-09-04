@@ -10,6 +10,30 @@ C++, Docker и SRE/DevOps-подходов. Текущий этап включа
 запуск в Docker и базовый endpoint с метриками в формате Prometheus. Сбор и
 визуализация метрик будут добавляться следующими этапами.
 
+## CI/CD
+
+GitHub Actions запускает CI на каждый push и pull request в `main`:
+
+1. конфигурирует Debug-сборку через CMake и Ninja;
+2. собирает C++ targets;
+3. запускает зарегистрированные CTest-тесты;
+4. собирает production Docker image через многоэтапный Dockerfile;
+5. при `push` в `main` публикует образ в GitHub Container Registry (GHCR).
+
+Workflow находится в `.github/workflows/ci.yml`. Образ получает две метки:
+
+- полный 40-символьный Git commit SHA — точная версия для deploy;
+- `latest` — удобный указатель на последний успешно собранный `main`.
+
+В Pull Request образ только собирается для проверки и не публикуется. Для
+публикации используется автоматически созданный `GITHUB_TOKEN`; отдельный
+пароль добавлять в репозиторий не нужно.
+
+CD выполнен в режиме Continuous Delivery: после успешного CI запуск на VM
+инициируется вручную через Ansible. Это соответствует проекту, в котором VM
+большую часть времени выключена. VM получает готовый образ из GHCR и не
+компилирует C++ исходники повторно.
+
 ## Возможности
 
 - собственный бинарный колоночный формат хранения данных;
@@ -124,6 +148,13 @@ HTTP не передаётся: он должен заранее находит�
   `cpp-httplib`, `nlohmann/json`, `prometheus-cpp` и, при сборке тестов,
   GoogleTest. `prometheus-cpp` используется для хранения и сериализации
   метрик.
+
+Для полного запуска в Yandex Cloud дополнительно нужны на локальном компьютере:
+
+- Yandex Cloud CLI (`yc`) для аутентификации и управления VM;
+- Terraform для создания облачной инфраструктуры;
+- Ansible для настройки VM и развёртывания приложения;
+- SSH-клиент для защищённого подключения к VM.
 
 ## Быстрый запуск в Docker
 
@@ -445,44 +476,106 @@ BENCHMARK_DATA_DIR=./datasets ./build/benchmark-service
 пространства». В контейнере это нужно, чтобы перенаправление порта Docker могло
 достичь процесса.
 
-## Запуск на удалённой VM
+## Полный запуск на новой VM
 
-VM (virtual machine, виртуальная машина) должна иметь установленный Git и
-Docker. На VM:
+Ниже собрана вся цепочка с нуля. Команды выполняются на локальном компьютере;
+Ansible сам подключается к VM по SSH.
 
-```bash
-git clone https://github.com/dmgoldberg1/Columnar-Engine-From-Scratch.git
-cd Columnar-Engine-From-Scratch
-docker build --tag columnar-benchmark-service:dev .
-mkdir -p datasets
-cp hits_sample.csv datasets/hits.csv
-```
+### 1. Опубликовать release
 
-Для запуска контейнера в фоновом режиме:
+Зафиксировать изменения и отправить их в `main`:
 
 ```bash
-DATASET_DIR="$(pwd)/datasets"
-docker run --detach \
-  --name columnar-benchmark \
-  --user "$(id -u):$(id -g)" \
-  --publish 127.0.0.1:8080:8080 \
-  --mount "type=bind,source=$DATASET_DIR,target=/data" \
-  --cpus 1.5 \
-  --memory 256m \
-  columnar-benchmark-service:dev
+git status --short
+git add .
+git commit -m "Add CI/CD release pipeline"
+git push origin main
+git rev-parse HEAD
 ```
 
-`--detach` оставляет контейнер работающим в фоне после завершения команды.
-Порт публикуется только на loopback-интерфейсе VM и не открывается напрямую в
-интернет.
+Перед `git add .` нужно проверить вывод `git status`, чтобы случайно не добавить
+секреты или локальные файлы. Известные Terraform state, `terraform.tfvars` и
+Ansible inventory уже исключены через `.gitignore`.
 
-Проверить контейнер с самой VM:
+Дождаться зелёного запуска во вкладке **Actions** репозитория. CI опубликует:
+
+```text
+ghcr.io/dmgoldberg1/columnar-engine-from-scratch:<полный commit SHA>
+```
+
+После первой публикации открыть пакет в разделе **Packages** на GitHub и сделать
+его публичным в **Package settings → Change visibility**. Это разрешает VM
+скачивать образ без сохранения GitHub-токена.
+
+### 2. Создать инфраструктуру Terraform
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:8080/health
-docker logs columnar-benchmark
-docker inspect --format '{{.State.Health.Status}}' columnar-benchmark
+cd infra/terraform/yandex
+cp terraform.tfvars.example terraform.tfvars
 ```
+
+В `terraform.tfvars` указать свой публичный IP с маской `/32` и путь к публичному
+SSH-ключу. Затем авторизовать provider и создать ресурсы:
+
+```bash
+export YC_TOKEN="$(yc iam create-token)"
+export YC_CLOUD_ID="$(yc config get cloud-id)"
+export YC_FOLDER_ID="$(yc config get folder-id)"
+
+terraform init
+terraform plan
+terraform apply
+terraform output
+```
+
+Terraform создаёт сеть, подсеть, security group и Ubuntu VM. Он не устанавливает
+на неё Docker и не запускает приложение.
+
+### 3. Подготовить SSH и inventory Ansible
+
+Первый раз подключиться вручную, проверить fingerprint SSH-ключа VM и выйти:
+
+```bash
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 ubuntu@<VM_PUBLIC_IP>
+```
+
+Затем подготовить локальный inventory:
+
+```bash
+cd ../../../infra/ansible
+cp inventory.example.ini inventory.ini
+```
+
+В `inventory.ini` заменить пример IP на `vm_public_ip` из вывода Terraform.
+Установить Ansible-коллекцию с модулем управления Compose:
+
+```bash
+ansible-galaxy collection install --requirements-file requirements.yml
+ansible benchmark -m ansible.builtin.ping
+```
+
+### 4. Развернуть конкретный release и выполнить smoke-тест
+
+```bash
+export BENCHMARK_RELEASE="$(git -C ../.. rev-parse HEAD)"
+ansible-playbook playbooks/site.yml
+```
+
+`BENCHMARK_RELEASE` — полный 40-символьный хеш коммита. `site.yml` выполняет:
+
+```text
+bootstrap.yml → deploy.yml → smoke.yml
+```
+
+- `bootstrap.yml` устанавливает Docker и Compose;
+- `deploy.yml` клонирует конфигурацию выбранного коммита, скачивает готовый
+  образ из GHCR и запускает три контейнера;
+- `smoke.yml` загружает тестовый датасет, выполняет Query 1 и проверяет API,
+  метрики, Prometheus и Grafana.
+
+На VM сборка не выполняется. Датасет находится в
+`/opt/columnar-benchmark/datasets` и подключается в контейнер как `/data` через
+bind mount.
 
 ### Доступ к VM через SSH-туннель
 
@@ -531,15 +624,17 @@ curl --fail --silent --show-error \
   http://127.0.0.1:18080/queries/1/run
 ```
 
-Остановить и удалить контейнер на VM:
+Остановить Compose-стенд на VM:
 
 ```bash
-docker stop columnar-benchmark
-docker rm columnar-benchmark
+cd /opt/columnar-benchmark
+sudo docker compose down
 ```
 
-Каталог `datasets` и созданный `active.egg` при этом сохранятся на VM, потому
-что это файлы хоста, подключённые через bind mount.
+Каталог `datasets` и созданный `active.egg` сохранятся на VM. Для прекращения
+оплаты вычислительных ресурсов VM можно остановить через Yandex Cloud. После
+повторного запуска публичный IP может измениться — тогда нужно обновить
+`inventory.ini`.
 
 ## Производительность
 
@@ -558,9 +653,13 @@ docker rm columnar-benchmark
 - Prometheus;
 - Grafana;
 - GoogleTest;
-- Docker.
+- Docker;
+- GitHub Actions и GHCR;
+- Terraform;
+- Ansible.
 
 ## Следующие этапы
 
-Следующий этап — добавить автоматически создаваемый dashboard Grafana с
-графиками Four Golden Signals: Traffic, Errors, Latency и Saturation.
+Базовая цепочка CI/CD, Terraform и Ansible готова. Следующий логический этап —
+зафиксировать SLI/SLO и добавить alerting; dashboard Grafana пока создаётся
+вручную.

@@ -1,0 +1,9 @@
+---
+benchmark_repository_url: https://github.com/dmgoldberg1/Columnar-Engine-From-Scratch.git
+benchmark_release: "{{ lookup('ansible.builtin.env', 'BENCHMARK_RELEASE') }}"
+benchmark_image_repository: ghcr.io/dmgoldberg1/columnar-engine-from-scratch
+benchmark_image: "{{ benchmark_image_repository }}:{{ benchmark_release }}"
+benchmark_project_dir: /opt/columnar-benchmark
+benchmark_runtime_user: ubuntu
+benchmark_smoke_dataset_source: hits.csv
+benchmark_smoke_expected_count: "1000"

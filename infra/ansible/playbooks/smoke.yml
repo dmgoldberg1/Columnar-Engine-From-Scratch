@@ -1,0 +1,112 @@
+---
+- name: Smoke-test the benchmark stack
+  hosts: benchmark
+  gather_facts: false
+
+  tasks:
+    - name: Check the benchmark API before loading data
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/health
+        method: GET
+        status_code: 200
+        return_content: true
+      register: initial_health
+      changed_when: false
+
+    - name: Load the smoke-test dataset
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/data/load
+        method: POST
+        body_format: json
+        body:
+          source: "{{ benchmark_smoke_dataset_source }}"
+        status_code: 200
+        return_content: true
+      register: dataset_load
+      changed_when: false
+
+    - name: Validate the dataset load response
+      ansible.builtin.assert:
+        that:
+          - dataset_load.json.status == "loaded"
+          - dataset_load.json.dataset == "active.egg"
+          - dataset_load.json.source_size_bytes | int > 0
+          - dataset_load.json.dataset_size_bytes | int > 0
+        fail_msg: "The benchmark API returned an invalid dataset load response."
+        quiet: true
+
+    - name: Run ClickBench Query 1
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/queries/1/run
+        method: POST
+        status_code: 200
+        return_content: true
+      register: benchmark_query
+      changed_when: false
+
+    - name: Validate the query result
+      ansible.builtin.assert:
+        that:
+          - benchmark_query.json.query_id == 1
+          - benchmark_query.json.result.columns == ["count"]
+          - benchmark_query.json.result.rows | length == 1
+          - benchmark_query.json.result.rows[0][0] == benchmark_smoke_expected_count
+        fail_msg: "ClickBench Query 1 returned an unexpected result."
+        quiet: true
+
+    - name: Check that the dataset is now active
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/health
+        method: GET
+        status_code: 200
+        return_content: true
+      register: loaded_health
+      changed_when: false
+      failed_when: not loaded_health.json.dataset_loaded
+
+    - name: Read the benchmark Prometheus metrics
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/metrics
+        method: GET
+        status_code: 200
+        return_content: true
+      register: benchmark_metrics
+      changed_when: false
+      failed_when: >-
+        'columnar_benchmark_http_requests_total' not in benchmark_metrics.content or
+        'columnar_benchmark_http_request_duration_seconds' not in benchmark_metrics.content
+
+    - name: Wait until Prometheus reports the benchmark target as up
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:9090/api/v1/query?query=up%7Bjob%3D%22benchmark-service%22%7D
+        method: GET
+        status_code: 200
+        return_content: true
+      register: prometheus_target
+      retries: 10
+      delay: 2
+      until:
+        - prometheus_target.json.status == "success"
+        - prometheus_target.json.data.result | length > 0
+        - prometheus_target.json.data.result[0].value[1] == "1"
+      changed_when: false
+
+    - name: Check Grafana health
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3000/api/health
+        method: GET
+        status_code: 200
+        return_content: true
+      register: grafana_health
+      changed_when: false
+      failed_when: grafana_health.json.database != "ok"
+
+    - name: Show the smoke-test result
+      ansible.builtin.debug:
+        msg:
+          - "Initial health: {{ initial_health.content }}"
+          - "Dataset load: {{ dataset_load.content }}"
+          - "Query result: {{ benchmark_query.content }}"
+          - "Prometheus target: up"
+          - "Grafana database: {{ grafana_health.json.database }}"

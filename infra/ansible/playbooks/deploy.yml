@@ -1,0 +1,83 @@
+---
+- name: Deploy the benchmark stack
+  hosts: benchmark
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Validate the release commit identifier
+      ansible.builtin.assert:
+        that:
+          - benchmark_release is match('^[0-9a-f]{40}$')
+        fail_msg: >-
+          Set BENCHMARK_RELEASE to the full 40-character Git commit SHA that
+          was successfully published by CI.
+        quiet: true
+
+    - name: Check out the pinned application revision
+      ansible.builtin.git:
+        repo: "{{ benchmark_repository_url }}"
+        dest: "{{ benchmark_project_dir }}"
+        version: "{{ benchmark_release }}"
+        update: true
+        force: false
+
+    - name: Create the dataset directory
+      ansible.builtin.file:
+        path: "{{ benchmark_project_dir }}/datasets"
+        state: directory
+        owner: "{{ benchmark_runtime_user }}"
+        group: "{{ benchmark_runtime_user }}"
+        mode: "0755"
+      when: not ansible_check_mode
+
+    - name: Install the smoke-test dataset when it is absent
+      ansible.builtin.copy:
+        src: "{{ benchmark_project_dir }}/hits_sample.csv"
+        dest: "{{ benchmark_project_dir }}/datasets/hits.csv"
+        remote_src: true
+        force: false
+        owner: "{{ benchmark_runtime_user }}"
+        group: "{{ benchmark_runtime_user }}"
+        mode: "0644"
+      when: not ansible_check_mode
+
+    - name: Configure the published benchmark image
+      ansible.builtin.copy:
+        dest: "{{ benchmark_project_dir }}/.env"
+        content: |
+          BENCHMARK_IMAGE={{ benchmark_image }}
+        owner: root
+        group: root
+        mode: "0644"
+      when: not ansible_check_mode
+
+    - name: Pull and start the published Compose project
+      community.docker.docker_compose_v2:
+        project_src: "{{ benchmark_project_dir }}"
+        state: present
+        build: never
+        pull: always
+        remove_orphans: true
+      when: not ansible_check_mode
+
+    - name: Wait for the benchmark API health endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/health
+        method: GET
+        status_code: 200
+        return_content: true
+      register: benchmark_health
+      retries: 30
+      delay: 2
+      until: benchmark_health.status == 200
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Show the deployed revision and health response
+      ansible.builtin.debug:
+        msg:
+          - "Deployed release: {{ benchmark_release }}"
+          - "Docker image: {{ benchmark_image }}"
+          - "Health response: {{ benchmark_health.content }}"
+      when: not ansible_check_mode

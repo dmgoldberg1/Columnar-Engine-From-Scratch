@@ -1,6 +1,7 @@
 FROM ubuntu:24.04 AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG CMAKE_BUILD_PARALLEL_LEVEL=2
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
@@ -21,7 +22,7 @@ RUN cmake -S . -B build -G Ninja \
         -DCOLUMNAR_ENABLE_NATIVE_OPTIMIZATIONS=OFF \
     && cmake --build build \
         --target benchmark-service \
-        --parallel
+        --parallel "${CMAKE_BUILD_PARALLEL_LEVEL}"
 
 FROM ubuntu:24.04 AS runtime
 

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: columnar-benchmark-service:dev
+    image: "${BENCHMARK_IMAGE:-columnar-benchmark-service:dev}"
     user: "${BENCHMARK_UID:-1000}:${BENCHMARK_GID:-1000}"
     environment:
       BENCHMARK_HOST: 0.0.0.0
