@@ -45,6 +45,7 @@ add_library(
   STATIC
   src/benchmark/benchmark_service.cpp
   src/benchmark/clickbench_dataset.cpp
+  src/benchmark/clickbench_query_plans.cpp
   src/benchmark/clickbench_queries.cpp
 )
 target_link_libraries(

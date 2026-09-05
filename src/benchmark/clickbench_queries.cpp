@@ -1,4 +1,5 @@
 #include "clickbench_queries.h"
+#include "clickbench_query_plans.h"
 
 #include "../file_reader/file_reader.h"
 #include "../operators/operators.h"
@@ -59,7 +60,7 @@ QueryExecutionResult RunClickBenchQuery(
     int query_id,
     const std::filesystem::path& dataset_path
 ) {
-    if (query_id != 1) {
+    if (query_id < 1 || query_id > 43) {
         throw std::invalid_argument("Unsupported ClickBench query id: " + std::to_string(query_id));
     }
     if (!std::filesystem::is_regular_file(dataset_path)) {
@@ -67,7 +68,9 @@ QueryExecutionResult RunClickBenchQuery(
     }
 
     const auto started_at = std::chrono::steady_clock::now();
-    auto [columns, rows] = RunQuery1(dataset_path);
+    auto [columns, rows] = query_id == 1
+        ? RunQuery1(dataset_path)
+        : RunClickBenchQueryPlan(query_id, dataset_path);
     const auto execution_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - started_at
     );

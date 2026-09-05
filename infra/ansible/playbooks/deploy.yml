@@ -5,20 +5,20 @@
   gather_facts: false
 
   tasks:
-    - name: Validate the release commit identifier
+    - name: Validate the release identifier
       ansible.builtin.assert:
         that:
-          - benchmark_release is match('^[0-9a-f]{40}$')
+          - benchmark_release == 'latest' or benchmark_release is match('^[0-9a-f]{40}$')
         fail_msg: >-
-          Set BENCHMARK_RELEASE to the full 40-character Git commit SHA that
-          was successfully published by CI.
+          BENCHMARK_RELEASE must be "latest" or a full 40-character Git commit
+          SHA that was published by CI.
         quiet: true
 
-    - name: Check out the pinned application revision
+    - name: Check out the application configuration
       ansible.builtin.git:
         repo: "{{ benchmark_repository_url }}"
         dest: "{{ benchmark_project_dir }}"
-        version: "{{ benchmark_release }}"
+        version: "{{ benchmark_source_revision }}"
         update: true
         force: false
 
@@ -78,6 +78,7 @@
       ansible.builtin.debug:
         msg:
           - "Deployed release: {{ benchmark_release }}"
+          - "Configuration revision: {{ benchmark_source_revision }}"
           - "Docker image: {{ benchmark_image }}"
           - "Health response: {{ benchmark_health.content }}"
       when: not ansible_check_mode

@@ -131,12 +131,12 @@ TEST(ClickBenchApplicationTest, RunsQuery1) {
 
 TEST(ClickBenchApplicationTest, RejectsUnsupportedQuery) {
     EXPECT_THROW(
-        benchmark_app::RunClickBenchQuery(2, "unused.egg"),
+        benchmark_app::RunClickBenchQuery(44, "unused.egg"),
         std::invalid_argument
     );
 }
 
-TEST(ClickBenchApplicationTest, LoadsSampleDataset) {
+TEST(ClickBenchApplicationTest, LoadsSampleDatasetAndRunsEveryQuery) {
     const std::filesystem::path source_csv_file = "../hits_sample.csv";
     const std::filesystem::path output_db_file = "clickbench_sample_test.egg";
     {
@@ -155,6 +155,19 @@ TEST(ClickBenchApplicationTest, LoadsSampleDataset) {
     benchmark_app::QueryExecutionResult query_result =
         benchmark_app::RunClickBenchQuery(1, output_db_file);
     ASSERT_EQ(query_result.rows, std::vector<std::vector<std::string>>{{"1000"}});
+
+    for (int query_id = 2; query_id <= 43; ++query_id) {
+        query_result = benchmark_app::RunClickBenchQuery(query_id, output_db_file);
+        ASSERT_EQ(query_result.query_id, query_id);
+        ASSERT_FALSE(query_result.columns.empty());
+    }
+
+    query_result = benchmark_app::RunClickBenchQuery(40, output_db_file);
+    ASSERT_EQ(query_result.columns, std::vector<std::string>{"status"});
+    ASSERT_EQ(
+        query_result.rows,
+        std::vector<std::vector<std::string>>{{"not_implemented"}}
+    );
 
     std::remove(output_db_file.c_str());
 }
